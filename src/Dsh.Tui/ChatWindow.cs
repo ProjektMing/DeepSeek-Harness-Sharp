@@ -45,6 +45,9 @@ public sealed class ChatWindow : IDisposable
     private DateTime? _exitConfirmAt;
     private bool _ctrlXPrefix;
     private string? _deleteConfirmSessionId;
+    private int _wrapCacheVersion = -1;
+    private int _wrapCacheWidth = -1;
+    private List<string>? _wrapCacheLines;
     private bool _sessionRenamedSubscribed;
 
     public ChatWindow(Context ctx, AgentLoopAgent agent, HarnessHome home, ISessionPersistence? persistence = null)
@@ -82,6 +85,8 @@ public sealed class ChatWindow : IDisposable
 
     public bool ExitRequested => _exitRequested;
 
+    public int RenderVersion { get; private set; }
+
     public int CursorScreenX { get; private set; }
 
     public int CursorScreenY { get; private set; }
@@ -108,6 +113,9 @@ public sealed class ChatWindow : IDisposable
         foreach (var sessionEvent in sessionEvents)
             ProcessSessionEvent(sessionEvent);
 
+        if (actions.Count > 0 || sessionEvents.Count > 0)
+            RenderVersion++;
+
         var delta = _renderer.TakeDelta();
         if (delta.Length > 0)
             AppendText(delta);
@@ -115,6 +123,7 @@ public sealed class ChatWindow : IDisposable
 
     public void HandleKey(ConsoleKeyInfo key)
     {
+        RenderVersion++;
         if (_pendingApproval is not null)
         {
             if (key.Key == ConsoleKey.Y)
@@ -203,6 +212,7 @@ public sealed class ChatWindow : IDisposable
                 if (selected is not null)
                 {
                     selected.Collapsed = !selected.Collapsed;
+                    _renderer.BumpVersion();
                     _selectedFoldKey = null;
                     return;
                 }
@@ -382,6 +392,7 @@ public sealed class ChatWindow : IDisposable
 
     public void HandleMouseWheel(int delta)
     {
+        RenderVersion++;
         if (_pendingApproval is not null)
             return;
         if (delta > 0)
@@ -397,6 +408,7 @@ public sealed class ChatWindow : IDisposable
 
     public void HandleMouseClick(int cellX, int cellY, UiLayout layout)
     {
+        RenderVersion++;
         if (_pendingApproval is not null)
             return;
         if (layout.Input.Contains(cellX, cellY))
@@ -1043,8 +1055,15 @@ public sealed class ChatWindow : IDisposable
         if (rect.Width <= 0 || rect.Height <= 0)
             return;
 
-        var visible = BuildVisibleLines(_renderer.FullText, _renderer.Folds);
-        var wrapped = WrapLines(visible, rect.Width);
+        var transcriptVersion = _renderer.Version;
+        if (_wrapCacheLines is null || _wrapCacheVersion != transcriptVersion || _wrapCacheWidth != rect.Width)
+        {
+            var visible = BuildVisibleLines(_renderer.FullText, _renderer.Folds);
+            _wrapCacheLines = WrapLines(visible, rect.Width);
+            _wrapCacheVersion = transcriptVersion;
+            _wrapCacheWidth = rect.Width;
+        }
+        var wrapped = _wrapCacheLines;
         if (wrapped.Count == 0)
             wrapped.Add("");
 

@@ -1,7 +1,7 @@
 namespace Dsh.Tui;
 
 [Flags]
-public enum CellStyle
+public enum CellStyle : byte
 {
     None = 0,
     Bold = 1,
@@ -9,7 +9,7 @@ public enum CellStyle
     Reverse = 4,
 }
 
-public enum AnsiColor
+public enum AnsiColor : byte
 {
     Default = 0,
     Black = 1,
@@ -55,6 +55,8 @@ public sealed class CellGrid
 
     public int Height { get; }
 
+    internal Cell[] RawCells => _cells;
+
     public Cell this[int x, int y]
     {
         get => _cells[(y * Width) + x];
@@ -69,6 +71,13 @@ public sealed class CellGrid
         var clone = new CellGrid(Width, Height);
         Array.Copy(_cells, clone._cells, _cells.Length);
         return clone;
+    }
+
+    public void CopyTo(CellGrid destination)
+    {
+        if (destination.Width != Width || destination.Height != Height)
+            throw new ArgumentException("Destination grid must have the same dimensions.", nameof(destination));
+        Array.Copy(_cells, destination._cells, _cells.Length);
     }
 
     public IEnumerable<CellChange> Diff(CellGrid previous)

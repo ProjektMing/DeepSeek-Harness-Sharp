@@ -11,6 +11,7 @@ public sealed class TranscriptRenderer
 
     private readonly StringBuilder _buffer = new();
     private readonly List<TranscriptFold> _folds = [];
+    private string? _cachedFullText;
     private int _renderedLength;
     private bool _reasoningOpen;
     private bool _assistantOpen;
@@ -18,9 +19,17 @@ public sealed class TranscriptRenderer
     private int? _codeFenceStart;
     private string? _codeFenceKind;
 
-    public string FullText => _buffer.ToString();
+    public string FullText => _cachedFullText ??= _buffer.ToString();
+
+    public int Version { get; private set; }
 
     public IReadOnlyList<TranscriptFold> Folds => _folds;
+
+    public void BumpVersion()
+    {
+        Version++;
+        _cachedFullText = null;
+    }
 
     public void AppendRaw(string text) => Append(text);
 
@@ -206,6 +215,9 @@ public sealed class TranscriptRenderer
     private void Append(string text)
     {
         lock (_buffer)
+        {
             _buffer.Append(text);
+            BumpVersion();
+        }
     }
 }

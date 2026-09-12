@@ -7,7 +7,7 @@ public class GlyphAtlasTests
     [Fact]
     public void GetUv_ForFirstGlyph_ReturnsTopLeftCell()
     {
-        var atlas = new GlyphAtlas();
+        var atlas = CreateIsolated();
 
         var uv = atlas.GetUv(' ');
 
@@ -20,23 +20,42 @@ public class GlyphAtlasTests
     [Fact]
     public void GetUv_ForUnknownCharacter_FallsBackToQuestionMark()
     {
-        var atlas = new GlyphAtlas();
+        var atlas = CreateIsolated();
 
-        Assert.Equal(atlas.GetUv('?'), atlas.GetUv('\ue000'));
+        Assert.Equal(atlas.GetUv('?'), atlas.GetUv('\uE000'));
     }
 
     [Fact]
     public void GetUv_ForA_UsesAtlasRowFromIndex()
     {
-        var atlas = new GlyphAtlas();
-        var index = atlas.GetGlyphIndex('A');
-        var row = index / GlyphAtlas.Columns;
-
-        Assert.Equal('A' - GlyphAtlas.FirstCharacter, index);
+        var atlas = CreateIsolated();
+        var slot = atlas.GetGlyphIndex('A');
+        var row = slot / GlyphAtlas.Columns;
 
         var uv = atlas.GetUv('A');
         Assert.Equal(row / (float)GlyphAtlas.Rows, uv.MinY);
         Assert.Equal((row + 1) / (float)GlyphAtlas.Rows, uv.MaxY);
+    }
+
+    [Fact]
+    public void Cache_RoundTrip_RestoresSlotsAndPixels()
+    {
+        var path = IsolatedCachePath();
+        var atlas = new GlyphAtlas(path);
+        var slot = atlas.GetGlyphIndex('A');
+        var uv = atlas.GetUv('A');
+        atlas.SaveCacheIfDirty();
+        Assert.True(File.Exists(path));
+
+        var restored = new GlyphAtlas(path);
+
+        Assert.Equal(slot, restored.GetGlyphIndex('A'));
+        Assert.Equal(uv, restored.GetUv('A'));
+        for (var y = 0; y < GlyphAtlas.GlyphHeight; y++)
+        {
+            for (var x = 0; x < GlyphAtlas.GlyphWidth; x++)
+                Assert.Equal(atlas.IsPixelSet('A', x, y), restored.IsPixelSet('A', x, y));
+        }
     }
 
     [Theory]
@@ -47,7 +66,7 @@ public class GlyphAtlasTests
     [InlineData('›')]
     public void IsPixelSet_SupportedCharacters_HaveVisiblePixels(char character)
     {
-        var atlas = new GlyphAtlas();
+        var atlas = CreateIsolated();
         var setPixels = 0;
 
         for (var y = 0; y < GlyphAtlas.GlyphHeight; y++)
@@ -65,7 +84,7 @@ public class GlyphAtlasTests
     [Fact]
     public void IsPixelSet_LatinAndCjk_ShareBaseline()
     {
-        var atlas = new GlyphAtlas();
+        var atlas = CreateIsolated();
         var latinBottom = LastSetRow(atlas, 'A');
         var cjkBottom = LastSetRow(atlas, '中');
 
@@ -89,12 +108,21 @@ public class GlyphAtlasTests
     [Fact]
     public void CreateTextureData_ReturnsAtlasSizedCopy()
     {
-        var atlas = new GlyphAtlas();
+        var atlas = CreateIsolated();
 
         var data = atlas.CreateTextureData();
 
         Assert.Equal(
             GlyphAtlas.Columns * GlyphAtlas.Rows * GlyphAtlas.GlyphWidth * GlyphAtlas.GlyphHeight,
             data.Length);
+    }
+
+    private static GlyphAtlas CreateIsolated() => new(IsolatedCachePath());
+
+    private static string IsolatedCachePath()
+    {
+        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/test-tmp"));
+        Directory.CreateDirectory(directory);
+        return Path.Combine(directory, $"glyph-cache-{Guid.NewGuid():N}.bin");
     }
 }

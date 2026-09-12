@@ -4,6 +4,7 @@ namespace Dsh.Tui;
 
 public sealed class AnsiRenderer
 {
+    private readonly StringBuilder _builder = new();
     private CellGrid? _previous;
 
     public string Render(CellGrid grid, int cursorX, int cursorY, bool forceFull = false)
@@ -14,7 +15,8 @@ public sealed class AnsiRenderer
             || _previous.Width != grid.Width
             || _previous.Height != grid.Height;
 
-        var builder = new StringBuilder();
+        var builder = _builder;
+        builder.Clear();
         if (needsFull)
         {
             AppendFull(builder, grid);
@@ -24,7 +26,10 @@ public sealed class AnsiRenderer
             AppendDiff(builder, grid, _previous!);
         }
 
-        _previous = grid.Clone();
+        if (_previous is null || _previous.Width != grid.Width || _previous.Height != grid.Height)
+            _previous = grid.Clone();
+        else
+            grid.CopyTo(_previous);
         AppendCursor(builder, cursorX, cursorY, grid.Width, grid.Height);
         return builder.ToString();
     }

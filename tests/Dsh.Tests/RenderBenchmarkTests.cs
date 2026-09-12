@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Text;
 using Dsh.Tui;
 
@@ -15,8 +14,8 @@ public class RenderBenchmarkTests
     public void Gpu_Vs_Cpu_Render_Benchmark()
     {
         var corpus = BuildCorpus();
-        var buildVertices = typeof(GpuRenderer).GetMethod("BuildVertices", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("BuildVertices not found");
+        var lines = corpus.Split('\n');
+        var grid = new CellGrid(GridWidth, GridHeight);
 
         var cpuFrameNanos = new long[FrameCount];
         var gpuFrameNanos = new long[FrameCount];
@@ -27,33 +26,35 @@ public class RenderBenchmarkTests
         var cpuAllocBefore = GC.GetAllocatedBytesForCurrentThread();
         for (var frame = 0; frame < FrameCount; frame++)
         {
-            var grid = BuildFrame(corpus, frame);
+            FillFrame(lines, grid, frame);
             var started = Stopwatch.GetTimestamp();
             var output = renderer.Render(grid, 0, 0, forceFull: frame == 0);
-            cpuFrameNanos[frame] = Stopwatch.GetTimestamp() - started;
+            cpuFrameNanos[frame] = (long)Stopwatch.GetElapsedTime(started).TotalNanoseconds;
             cpuBytes += output.Length;
         }
         var cpuAlloc = GC.GetAllocatedBytesForCurrentThread() - cpuAllocBefore;
 
-        float[]? vertices = null;
+        var backgroundInstances = new float[CellQuadBuilder.InstanceFloatCount(GridWidth * GridHeight)];
+        var glyphInstances = new float[CellQuadBuilder.InstanceFloatCount(GridWidth * GridHeight)];
+        FillFrame(lines, grid, 0);
+        CellQuadBuilder.FillInstances(grid, backgroundInstances, glyphInstances);
         var gpuAllocBefore = GC.GetAllocatedBytesForCurrentThread();
         for (var frame = 0; frame < FrameCount; frame++)
         {
-            var grid = BuildFrame(corpus, frame);
+            FillFrame(lines, grid, frame);
             var started = Stopwatch.GetTimestamp();
-            var quads = CellQuadBuilder.Build(grid);
-            vertices = (float[])buildVertices.Invoke(null, [quads])!;
-            gpuFrameNanos[frame] = Stopwatch.GetTimestamp() - started;
-            gpuBytes += vertices.Length * sizeof(float);
+            var (backgroundCount, glyphCount) = CellQuadBuilder.FillInstances(grid, backgroundInstances, glyphInstances);
+            gpuFrameNanos[frame] = (long)Stopwatch.GetElapsedTime(started).TotalNanoseconds;
+            gpuBytes += (backgroundCount + glyphCount) * CellQuadBuilder.FloatsPerInstance * sizeof(float);
         }
         var gpuAlloc = GC.GetAllocatedBytesForCurrentThread() - gpuAllocBefore;
 
         var report = new StringBuilder();
         report.AppendLine("# GPU vs CPU 渲染压测");
         report.AppendLine();
-        report.AppendLine($"网格: {GridWidth}x{GridHeight}，帧数: {FrameCount}，每帧内容整体滚动一行（模拟大量文本输出）。");
-        report.AppendLine("CPU 路径: AnsiRenderer.Render（diff，首帧全量），不含终端 I/O。");
-        report.AppendLine("GPU 路径: CellQuadBuilder.Build + BuildVertices（顶点构建），不含 GL 上传与交换。");
+        report.AppendLine($"网格: {GridWidth}x{GridHeight}，帧数: {FrameCount}，每帧内容整体滚动一行（模拟大量文本输出）；网格对象复用、每帧重写单元格（与真实 TUI 一致）。");
+        report.AppendLine("CPU 路径: AnsiRenderer.Render（行级 diff，StringBuilder 与 prev 网格复用，首帧全量），不含终端 I/O。");
+        report.AppendLine("GPU 路径: CellQuadBuilder.FillInstances（单趟扫描、实例化实例数据 9 floats/quad、动态字形图集、float[] 复用），不含 GL 上传与交换。");
         report.AppendLine();
         report.AppendLine("| 指标 | CPU (AnsiRenderer) | GPU (顶点构建) |");
         report.AppendLine("| --- | --- | --- |");
@@ -62,7 +63,7 @@ public class RenderBenchmarkTests
         report.AppendLine($"| 最大帧耗时 | {cpuFrameNanos.Max() / 1e6:F3} ms | {gpuFrameNanos.Max() / 1e6:F3} ms |");
         report.AppendLine($"| 总耗时 | {cpuFrameNanos.Sum() / 1e6:F1} ms | {gpuFrameNanos.Sum() / 1e6:F1} ms |");
         report.AppendLine($"| GC 分配 | {cpuAlloc / 1e6:F1} MB | {gpuAlloc / 1e6:F1} MB |");
-        report.AppendLine($"| 每帧产物大小 | {cpuBytes / FrameCount / 1024.0:F1} KB ANSI 文本 | {gpuBytes / FrameCount / 1024.0:F1} KB 顶点数据（显存占用估算） |");
+        report.AppendLine($"| 每帧产物大小 | {cpuBytes / 1024.0 / FrameCount:F1} KB ANSI 文本 | {gpuBytes / 1024.0 / FrameCount:F1} KB 顶点数据（显存占用估算） |");
 
         var directory = Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/bench");
         Directory.CreateDirectory(directory);
@@ -87,10 +88,9 @@ public class RenderBenchmarkTests
         return builder.ToString();
     }
 
-    private static CellGrid BuildFrame(string corpus, int frame)
+    private static void FillFrame(string[] lines, CellGrid grid, int frame)
     {
-        var lines = corpus.Split('\n');
-        var grid = new CellGrid(GridWidth, GridHeight);
+        grid.Clear();
         for (var row = 0; row < GridHeight; row++)
         {
             var line = lines[(frame + row) % lines.Length];
@@ -103,6 +103,5 @@ public class RenderBenchmarkTests
                 x += TerminalTextWidth.IsWide(character) ? 2 : 1;
             }
         }
-        return grid;
     }
 }

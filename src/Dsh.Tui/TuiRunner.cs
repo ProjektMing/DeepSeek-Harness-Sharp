@@ -122,9 +122,18 @@ public static class TuiRunner
 
         try
         {
+            var prewarm = Task.Run(() => GlyphAtlas.Shared.Prewarm());
             using var chat = new ChatWindow(app.Ctx, agent, app.Home, app.Ctx.Get<ISessionPersistence>(Persistence.Plugin.ServiceName));
             using var renderer = new GpuRenderer(chat);
             renderer.Run();
+            try
+            {
+                prewarm.GetAwaiter().GetResult();
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine($"字形预热失败：{error.Message}");
+            }
             var sessions = app.Ctx.Get<SessionStore>(SessionStore.ServiceName)!;
             sessions.Flush(agent.Session).GetAwaiter().GetResult();
             return 0;

@@ -12,20 +12,32 @@ public sealed class GpuRenderer : IDisposable
 {
     private const int CellPixelWidth = 16;
     private const int CellPixelHeight = 20;
-    private const int FloatsPerVertex = 9;
-    private const int VerticesPerQuad = 6;
 
-    private readonly GlyphAtlas _atlas = new();
+    private readonly GlyphAtlas _atlas = GlyphAtlas.Shared;
     private readonly ChatWindow _chat;
     private readonly GameWindow _window;
     private CellGrid _grid;
     private UiLayout _layout;
     private CellGrid? _lastGrid;
-    private int _vao;
-    private int _vbo;
+    private float[] _backgroundInstances = new float[CellQuadBuilder.InstanceFloatCount(80 * 25)];
+    private float[] _glyphInstances = new float[CellQuadBuilder.InstanceFloatCount(80 * 25)];
+    private readonly int[] _dirtySlots = new int[64];
+    private int _backgroundGpuCapacity;
+    private int _glyphGpuCapacity;
+    private int _seenRenderVersion = -1;
+    private int _unitVbo;
+    private int _ebo;
+    private int _backgroundVao;
+    private int _backgroundInstanceVbo;
+    private int _glyphVao;
+    private int _glyphInstanceVbo;
     private int _shader;
     private int _texture;
-    private int _vertexCount;
+    private int _backgroundInstanceCount;
+    private int _glyphInstanceCount;
+    private int _textureLocation;
+    private int _gridSizeLocation;
+    private int _texEnabledLocation;
     private float _mouseX;
     private float _mouseY;
     private bool _disposed;
@@ -69,11 +81,59 @@ public sealed class GpuRenderer : IDisposable
             GL.DeleteProgram(_shader);
         if (_texture != 0)
             GL.DeleteTexture(_texture);
-        if (_vao != 0)
-            GL.DeleteVertexArray(_vao);
-        if (_vbo != 0)
-            GL.DeleteBuffer(_vbo);
+        if (_backgroundVao != 0)
+            GL.DeleteVertexArray(_backgroundVao);
+        if (_backgroundInstanceVbo != 0)
+            GL.DeleteBuffer(_backgroundInstanceVbo);
+        if (_glyphVao != 0)
+            GL.DeleteVertexArray(_glyphVao);
+        if (_glyphInstanceVbo != 0)
+            GL.DeleteBuffer(_glyphInstanceVbo);
+        if (_unitVbo != 0)
+            GL.DeleteBuffer(_unitVbo);
+        if (_ebo != 0)
+            GL.DeleteBuffer(_ebo);
+        _atlas.SaveCacheIfDirty();
         _window.Dispose();
+    }
+
+    private void FlushAtlasDirty()
+    {
+        if (_atlas.DirtyCount == 0)
+            return;
+        GL.BindTexture(TextureTarget.Texture2D, _texture);
+        GL.PixelStorei(PixelStoreParameter.UnpackRowLength, _atlas.AtlasWidth);
+        var flushed = _atlas.FlushDirtyRegions(_dirtySlots);
+        while (flushed > 0)
+        {
+            for (var index = 0; index < flushed; index++)
+            {
+                var slot = _dirtySlots[index];
+                var slotX = (slot % GlyphAtlas.Columns) * GlyphAtlas.GlyphWidth;
+                var slotY = (slot / GlyphAtlas.Columns) * GlyphAtlas.GlyphHeight;
+                GL.TexSubImage2D(
+                    TextureTarget.Texture2D,
+                    0,
+                    slotX,
+                    slotY,
+                    GlyphAtlas.GlyphWidth,
+                    GlyphAtlas.GlyphHeight,
+                    PixelFormat.Red,
+                    PixelType.UnsignedByte,
+                    ref _atlas.TextureData[(slotY * _atlas.AtlasWidth) + slotX]);
+            }
+            flushed = _atlas.FlushDirtyRegions(_dirtySlots);
+        }
+        GL.PixelStorei(PixelStoreParameter.UnpackRowLength, 0);
+    }
+
+    private static void Upload(int vbo, float[] vertices, int floatCount, int capacity, ref int gpuCapacity)
+    {
+        GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
+        if (capacity > gpuCapacity)
+            gpuCapacity = capacity;
+        GL.BufferData(BufferTarget.ArrayBuffer, gpuCapacity * sizeof(float), IntPtr.Zero, BufferUsage.DynamicDraw);
+        GL.BufferSubData(BufferTarget.ArrayBuffer, IntPtr.Zero, floatCount * sizeof(float), vertices);
     }
 
     private void OnLoad()
@@ -84,23 +144,52 @@ public sealed class GpuRenderer : IDisposable
 
         _shader = CreateShader();
         _texture = CreateTexture();
+        _textureLocation = GL.GetUniformLocation(_shader, "uTexture");
+        _gridSizeLocation = GL.GetUniformLocation(_shader, "uGridSize");
+        _texEnabledLocation = GL.GetUniformLocation(_shader, "uTexEnabled");
 
-        _vao = GL.GenVertexArray();
-        _vbo = GL.GenBuffer();
-        GL.BindVertexArray(_vao);
-        GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
+        float[] unitQuad = [0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f];
+        _unitVbo = GL.GenBuffer();
+        GL.BindBuffer(BufferTarget.ArrayBuffer, _unitVbo);
+        GL.BufferData(BufferTarget.ArrayBuffer, unitQuad.Length * sizeof(float), unitQuad, BufferUsage.StaticDraw);
 
-        GL.EnableVertexAttribArray(0);
-        GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, FloatsPerVertex * sizeof(float), 0);
-        GL.EnableVertexAttribArray(1);
-        GL.VertexAttribPointer(1, 4, VertexAttribPointerType.Float, false, FloatsPerVertex * sizeof(float), 2 * sizeof(float));
-        GL.EnableVertexAttribArray(2);
-        GL.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, FloatsPerVertex * sizeof(float), 6 * sizeof(float));
-        GL.EnableVertexAttribArray(3);
-        GL.VertexAttribPointer(3, 1, VertexAttribPointerType.Float, false, FloatsPerVertex * sizeof(float), 8 * sizeof(float));
+        ushort[] indices = [0, 1, 2, 2, 1, 3];
+        _ebo = GL.GenBuffer();
+        GL.BindBuffer(BufferTarget.ElementArrayBuffer, _ebo);
+        GL.BufferData(BufferTarget.ElementArrayBuffer, indices.Length * sizeof(ushort), indices, BufferUsage.StaticDraw);
+
+        _backgroundInstanceVbo = GL.GenBuffer();
+        _backgroundVao = CreateInstanceVao(_backgroundInstanceVbo);
+        _glyphInstanceVbo = GL.GenBuffer();
+        _glyphVao = CreateInstanceVao(_glyphInstanceVbo);
 
         GL.BindVertexArray(0);
         GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
+    }
+
+    private int CreateInstanceVao(int instanceVbo)
+    {
+        var vao = GL.GenVertexArray();
+        GL.BindVertexArray(vao);
+        GL.BindBuffer(BufferTarget.ElementArrayBuffer, _ebo);
+        GL.BindBuffer(BufferTarget.ArrayBuffer, _unitVbo);
+        GL.EnableVertexAttribArray(0);
+        GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 2 * sizeof(float), 0);
+        GL.BindBuffer(BufferTarget.ArrayBuffer, instanceVbo);
+        var stride = CellQuadBuilder.FloatsPerInstance * sizeof(float);
+        GL.EnableVertexAttribArray(1);
+        GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, 0);
+        GL.VertexAttribDivisor(1, 1);
+        GL.EnableVertexAttribArray(2);
+        GL.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, stride, 2 * sizeof(float));
+        GL.VertexAttribDivisor(2, 1);
+        GL.EnableVertexAttribArray(3);
+        GL.VertexAttribPointer(3, 1, VertexAttribPointerType.Float, false, stride, 4 * sizeof(float));
+        GL.VertexAttribDivisor(3, 1);
+        GL.EnableVertexAttribArray(4);
+        GL.VertexAttribPointer(4, 4, VertexAttribPointerType.Float, false, stride, 5 * sizeof(float));
+        GL.VertexAttribDivisor(4, 1);
+        return vao;
     }
 
     private void OnResize(ResizeEventArgs e)
@@ -115,6 +204,12 @@ public sealed class GpuRenderer : IDisposable
         {
             _grid = new CellGrid(gridWidth, gridHeight);
             _layout = LayoutEngine.Calculate(gridWidth, gridHeight);
+            _lastGrid = null;
+            var required = CellQuadBuilder.InstanceFloatCount(gridWidth * gridHeight);
+            if (_backgroundInstances.Length < required)
+                _backgroundInstances = new float[required];
+            if (_glyphInstances.Length < required)
+                _glyphInstances = new float[required];
         }
     }
 
@@ -127,31 +222,45 @@ public sealed class GpuRenderer : IDisposable
             return;
         }
 
+        if (_chat.RenderVersion == _seenRenderVersion
+            && _lastGrid is not null
+            && _lastGrid.Width == _grid.Width
+            && _lastGrid.Height == _grid.Height)
+            return;
+        _seenRenderVersion = _chat.RenderVersion;
+
         _chat.Draw(_grid, _layout);
         var changed = _lastGrid is null
             || _lastGrid.Width != _grid.Width
             || _lastGrid.Height != _grid.Height
-            || _grid.Diff(_lastGrid).Any();
+            || !GridsEqual(_grid, _lastGrid);
         if (changed)
         {
-            var quads = CellQuadBuilder.Build(_grid);
-            var vertices = BuildVertices(quads);
-            _vertexCount = vertices.Length / FloatsPerVertex;
-            GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
-            GL.BufferData(BufferTarget.ArrayBuffer, vertices.Length * sizeof(float), vertices, BufferUsage.DynamicDraw);
+            var (backgroundCount, glyphCount) = CellQuadBuilder.FillInstances(_grid, _backgroundInstances, _glyphInstances);
+            _backgroundInstanceCount = backgroundCount;
+            _glyphInstanceCount = glyphCount;
+            var cellCount = _grid.Width * _grid.Height;
+            Upload(_backgroundInstanceVbo, _backgroundInstances, backgroundCount * CellQuadBuilder.FloatsPerInstance, CellQuadBuilder.InstanceFloatCount(cellCount), ref _backgroundGpuCapacity);
+            Upload(_glyphInstanceVbo, _glyphInstances, glyphCount * CellQuadBuilder.FloatsPerInstance, CellQuadBuilder.InstanceFloatCount(cellCount), ref _glyphGpuCapacity);
         }
 
-        _lastGrid = _grid.Clone();
+        _lastGrid ??= new CellGrid(_grid.Width, _grid.Height);
+        (_grid, _lastGrid) = (_lastGrid, _grid);
 
         GL.Clear(ClearBufferMask.ColorBufferBit);
         GL.UseProgram(_shader);
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.Texture2D, _texture);
-        GL.Uniform1i(GL.GetUniformLocation(_shader, "uTexture"), 0);
-        GL.Uniform2f(GL.GetUniformLocation(_shader, "uGridSize"), _grid.Width, _grid.Height);
+        GL.Uniform1i(_textureLocation, 0);
+        GL.Uniform2f(_gridSizeLocation, _grid.Width, _grid.Height);
+        FlushAtlasDirty();
 
-        GL.BindVertexArray(_vao);
-        GL.DrawArrays(PrimitiveType.Triangles, 0, _vertexCount);
+        GL.Uniform1f(_texEnabledLocation, 0f);
+        GL.BindVertexArray(_backgroundVao);
+        GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedShort, IntPtr.Zero, _backgroundInstanceCount);
+        GL.Uniform1f(_texEnabledLocation, 1f);
+        GL.BindVertexArray(_glyphVao);
+        GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedShort, IntPtr.Zero, _glyphInstanceCount);
         GL.BindVertexArray(0);
 
         if (!_screenshotTaken && _screenshotPath is not null)
@@ -264,23 +373,28 @@ public sealed class GpuRenderer : IDisposable
     {
         const string vertexSource = """
             #version 330 core
-            layout(location = 0) in vec2 aPosition;
-            layout(location = 1) in vec4 aColor;
-            layout(location = 2) in vec2 aUv;
-            layout(location = 3) in float aTexEnabled;
+            layout(location = 0) in vec2 aCorner;
+            layout(location = 1) in vec2 aOrigin;
+            layout(location = 2) in vec2 aSize;
+            layout(location = 3) in float aColorPacked;
+            layout(location = 4) in vec4 aUv;
             uniform vec2 uGridSize;
             out vec4 vColor;
             out vec2 vUv;
-            out float vTexEnabled;
             void main()
             {
+                vec2 cellPos = aOrigin + aCorner * aSize;
                 vec2 ndc = vec2(
-                    aPosition.x / uGridSize.x * 2.0 - 1.0,
-                    1.0 - aPosition.y / uGridSize.y * 2.0);
+                    cellPos.x / uGridSize.x * 2.0 - 1.0,
+                    1.0 - cellPos.y / uGridSize.y * 2.0);
                 gl_Position = vec4(ndc, 0.0, 1.0);
-                vColor = aColor;
-                vUv = aUv;
-                vTexEnabled = aTexEnabled;
+                uint packedColor = floatBitsToUint(aColorPacked);
+                vColor = vec4(
+                    float(packedColor & 0xFFu),
+                    float((packedColor >> 8) & 0xFFu),
+                    float((packedColor >> 16) & 0xFFu),
+                    float((packedColor >> 24) & 0xFFu)) / 255.0;
+                vUv = mix(aUv.xy, aUv.zw, aCorner);
             }
             """;
 
@@ -288,12 +402,12 @@ public sealed class GpuRenderer : IDisposable
             #version 330 core
             in vec4 vColor;
             in vec2 vUv;
-            in float vTexEnabled;
             uniform sampler2D uTexture;
+            uniform float uTexEnabled;
             out vec4 FragColor;
             void main()
             {
-                if (vTexEnabled > 0.5)
+                if (uTexEnabled > 0.5)
                 {
                     float alpha = texture(uTexture, vUv).r;
                     FragColor = vec4(vColor.rgb, alpha);
@@ -334,44 +448,17 @@ public sealed class GpuRenderer : IDisposable
         return program;
     }
 
-    private static float[] BuildVertices(IReadOnlyList<CellQuad> quads)
+    private static bool GridsEqual(CellGrid current, CellGrid previous)
     {
-        var vertices = new float[quads.Count * VerticesPerQuad * FloatsPerVertex];
-        var offset = 0;
-
-        foreach (var quad in quads)
+        for (var y = 0; y < current.Height; y++)
         {
-            var x0 = quad.X;
-            var y0 = quad.Y;
-            var x1 = quad.X + quad.Width;
-            var y1 = quad.Y + quad.Height;
-            var u0 = quad.U0;
-            var v0 = quad.V0;
-            var u1 = quad.U1;
-            var v1 = quad.V1;
-
-            AddVertex(vertices, ref offset, x0, y0, u0, v0, quad);
-            AddVertex(vertices, ref offset, x1, y0, u1, v0, quad);
-            AddVertex(vertices, ref offset, x0, y1, u0, v1, quad);
-            AddVertex(vertices, ref offset, x0, y1, u0, v1, quad);
-            AddVertex(vertices, ref offset, x1, y0, u1, v0, quad);
-            AddVertex(vertices, ref offset, x1, y1, u1, v1, quad);
+            for (var x = 0; x < current.Width; x++)
+            {
+                if (current[x, y] != previous[x, y])
+                    return false;
+            }
         }
-
-        return vertices;
-    }
-
-    private static void AddVertex(float[] vertices, ref int offset, float x, float y, float u, float v, CellQuad quad)
-    {
-        vertices[offset++] = x;
-        vertices[offset++] = y;
-        vertices[offset++] = quad.Color.R;
-        vertices[offset++] = quad.Color.G;
-        vertices[offset++] = quad.Color.B;
-        vertices[offset++] = quad.Color.A;
-        vertices[offset++] = u;
-        vertices[offset++] = v;
-        vertices[offset++] = quad.IsGlyph ? 1f : 0f;
+        return true;
     }
 
     private static bool TryMapKey(Keys key, out ConsoleKey consoleKey)
