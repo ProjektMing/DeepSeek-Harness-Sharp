@@ -1,0 +1,64 @@
+# DeepSeek Harness 配置文件模板（settings.yaml v2）
+# 编辑此文件会影响全新安装首次启动时生成的默认 settings.yaml。
+
+# DeepSeek Harness 配置文件（settings.yaml v2）
+# 本文件由 DSH 首次启动时自动生成，可手动编辑。
+
+# 全局默认模型，格式为 provider/model
+global_default_model: deepseek-official/deepseek-v4-flash
+
+# 压缩（compaction）使用的模型，格式为 provider/model
+compaction_model: deepseek-official/deepseek-v4-flash
+
+# 子代理默认模型，格式为 provider/model
+subagent:
+  default_model: deepseek-official/deepseek-v4-flash
+
+# LLM 提供方配置
+providers:
+  deepseek-official:
+    type: openai-compatible
+    options:
+      baseUrl: https://api.deepseek.com
+      apiKey: sk-...
+    models:
+      deepseek-v4-flash:
+        name: DeepSeek V4 Flash
+        reasoning: true
+        tool_call: true
+      deepseek-v4-pro:
+        name: DeepSeek V4 Pro
+        reasoning: true
+        tool_call: true
+
+# 技能目录
+skills:
+  paths: []
+  urls: []
+
+# 全局规则
+rules: []
+
+# MCP 服务器
+mcp:
+  filesystem:
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem"]
+    args: []
+    url: null
+    enabled: true
+
+# 项目记忆开关（/memory on|off）
+memory:
+  enabled: false
+  # file: .dsh-memory.md
+
+# 自动压缩选项
+compaction:
+  auto: true
+  prune: true
+
+# 安全设置
+safety:
+  autoApprove: false
+  blacklist: []
