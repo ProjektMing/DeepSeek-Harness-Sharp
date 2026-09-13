@@ -123,6 +123,12 @@ public sealed class DshPluginCatalogGenerator : IIncrementalGenerator
 
         builder.AppendLine("            return list;");
         builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        static DshPluginCatalog()");
+        builder.AppendLine("        {");
+        builder.AppendLine("            foreach (var entry in GetPlugins())");
+        builder.AppendLine("                Dsh.Plugins.DshPluginCatalogRegistry.Register(entry.Package, entry.Implementation);");
+        builder.AppendLine("        }");
         builder.AppendLine("    }");
         builder.AppendLine("}");
         builder.AppendLine();
