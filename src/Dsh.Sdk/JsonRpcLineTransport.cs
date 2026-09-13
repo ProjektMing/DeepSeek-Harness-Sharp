@@ -157,7 +157,7 @@ public sealed class JsonRpcLineTransport : IJsonRpcPeer, IAsyncDisposable
             JsonElement? parameters = root.TryGetProperty("params", out var paramsElement) ? paramsElement.Clone() : null;
             if (root.TryGetProperty("id", out var requestId))
             {
-                _ = HandleIncomingRequestAsync(requestId, method, parameters);
+                _ = HandleIncomingRequestAsync(requestId.Clone(), method, parameters);
                 return;
             }
             NotificationHandler?.Invoke(method, parameters);

@@ -88,6 +88,9 @@ public static class Program
         if (useTmux && Environment.GetEnvironmentVariable("TMUX") is null)
             return StartInTmux(args);
 
+        // stdin 与 stdout 均被重定向时按 ACP agent 运行,供 ACP client 以子进程方式拉起
+        profile ??= Console.IsInputRedirected && Console.IsOutputRedirected ? "acp" : null;
+
         var harnessHome = HarnessHome.Resolve(home);
         if (dumpDefaultConfig)
         {
