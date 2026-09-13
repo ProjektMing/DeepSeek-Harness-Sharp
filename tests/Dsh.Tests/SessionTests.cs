@@ -121,13 +121,12 @@ public class SessionTests
     {
         var session = Session.Create(NewSessionId());
         var config = new LlmCallConfig("deepseek-official", "deepseek-v4-flash");
-        session.Append(new RequestHeaderPayload(new EpochHeader(config, System: "sys"), RequestHeaderReasons.Initial));
-        session.Append(new RequestHeaderPayload(new EpochHeader(config with { MaxTokens = 1024 }, System: "sys"), RequestHeaderReasons.Change));
+        session.Append(new RequestHeaderPayload(new EpochHeader(config), RequestHeaderReasons.Initial));
+        session.Append(new RequestHeaderPayload(new EpochHeader(config with { MaxTokens = 1024 }), RequestHeaderReasons.Change));
 
         var header = session.RequestHeader();
         Assert.NotNull(header);
         Assert.Equal(1024, header.Config.MaxTokens);
-        Assert.Equal("sys", header.System);
     }
 
     [Fact]

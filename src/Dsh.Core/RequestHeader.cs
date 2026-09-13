@@ -11,7 +11,6 @@ public static class RequestHeader
         return header with
         {
             AdapterDefaults = adapterDefaults is { ReasoningEffort: true } or { MaxTokens: true } ? adapterDefaults : null,
-            System = string.IsNullOrEmpty(header.System) ? null : header.System,
             Tools = header.Tools is { Count: > 0 } ? header.Tools : null,
         };
     }
@@ -20,8 +19,7 @@ public static class RequestHeader
     {
         if (!a.Config.Equals(b.Config)
             || (a.AdapterDefaults?.ReasoningEffort ?? false) != (b.AdapterDefaults?.ReasoningEffort ?? false)
-            || (a.AdapterDefaults?.MaxTokens ?? false) != (b.AdapterDefaults?.MaxTokens ?? false)
-            || a.System != b.System)
+            || (a.AdapterDefaults?.MaxTokens ?? false) != (b.AdapterDefaults?.MaxTokens ?? false))
             return false;
         var aTools = a.Tools ?? [];
         var bTools = b.Tools ?? [];

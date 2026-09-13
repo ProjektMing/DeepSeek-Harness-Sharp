@@ -91,7 +91,7 @@ public class AgentLoopIntegrationTests
         public AgentRegistry Agents { get; }
         public AgentLoop Loop { get; }
 
-        public HarnessFixture(string baseUrl)
+        public HarnessFixture(string baseUrl, bool inHistory = false)
         {
             Ctx = new Context();
             Sessions = new SessionStore(Ctx);
@@ -106,7 +106,9 @@ public class AgentLoopIntegrationTests
                 new Dsh.Llm.DeepSeek.RequestDefaults(),
                 Dsh.Llm.DeepSeek.DeepSeekConnectionOptions.DefaultMaxTokens,
                 Dsh.Llm.DeepSeek.DeepSeekConnectionOptions.DefaultContextWindowValue,
-                [new Dsh.Llm.DeepSeek.DeepSeekCatalogModel("test-model")],
+                [new Dsh.Llm.DeepSeek.DeepSeekCatalogModel(
+                    "test-model",
+                    SystemPromptUpdate: inHistory ? SystemPromptUpdateModes.InHistory : null)],
                 Dsh.Llm.DeepSeek.DeepSeekConnectionOptions.DefaultStreamIdleTimeoutMs,
                 ResolvedRetryPolicy.Resolve(null, "test"));
             var adapter = new Dsh.Llm.DeepSeek.DeepSeekAdapter("test-provider", new Dsh.Llm.DeepSeek.DeepSeekAdapterOptions
@@ -140,6 +142,7 @@ public class AgentLoopIntegrationTests
             [
                 SessionEventTypes.TurnStart,
                 SessionEventTypes.StepStart,
+                SessionEventTypes.SystemMessage,
                 SessionEventTypes.UserMessage,
                 SessionEventTypes.RequestHeader,
                 SessionEventTypes.RequestContext,
@@ -158,7 +161,8 @@ public class AgentLoopIntegrationTests
         Assert.Equal(new TokenUsage(10, 2, 12), assistant.Usage);
 
         var messages = agent.Session.DeriveMessages();
-        Assert.Equal(2, messages.Count);
+        Assert.Equal(3, messages.Count);
+        Assert.Equal(MessageRole.System, messages[0].Role);
         Assert.Contains("test-model", server.LastRequestBody);
         Assert.Contains("\"stream\":true", server.LastRequestBody);
     }
@@ -231,5 +235,68 @@ public class AgentLoopIntegrationTests
         Assert.Equal("abc", Assert.IsType<TextBlock>(toolResult.Message.Block.Content[0]).Text);
         var turnEnd = agent.Session.SnapshotEvents().Select(e => e.Data).OfType<TurnEndPayload>().Single();
         Assert.IsType<TurnEndReason.Completed>(turnEnd.Reason);
+    }
+
+    [Fact]
+    public async Task InHistoryModel_AppendsSystemPromptOnChange()
+    {
+        using var server = new MockDeepSeekServer(_ => SseTextOnly);
+        using var fixture = new HarnessFixture(server.BaseUrl, inHistory: true);
+        var handle = await fixture.Agents.Create(new CreateAgentOptions(
+            SessionId.Create("session-in-history"),
+            null,
+            new AgentOptions("test-provider", "test-model")));
+        var agent = (AgentLoopAgent)handle.Agent;
+
+        agent.Followup(MessageFactory.CreateUserText("hi"));
+        await agent.WhenIdle();
+        fixture.Ctx.Get<SystemPrompt>(SystemPrompt.ServiceName)!.ReplacePersona("persona v2");
+        agent.Followup(MessageFactory.CreateUserText("again"));
+        await agent.WhenIdle();
+
+        var systemEvents = agent.Session.SnapshotEvents()
+            .Where(e => e.Type == SessionEventTypes.SystemMessage)
+            .ToList();
+        Assert.Equal(2, systemEvents.Count);
+        Assert.All(systemEvents, e => Assert.IsType<SurfaceOp.Append>(e.SurfaceOp));
+        var messages = agent.Session.DeriveMessages();
+        Assert.Equal(MessageRole.System, messages[0].Role);
+        Assert.Equal(2, messages.Count(message => message.Role == MessageRole.System));
+        var persona = Assert.IsType<TextBlock>(messages.Last(message => message.Role == MessageRole.System).Content[0]).Text;
+        Assert.Contains("persona v2", persona);
+        var systemCount = server.LastRequestBody!.Split("\"role\":\"system\"").Length - 1;
+        Assert.Equal(2, systemCount);
+    }
+
+    [Fact]
+    public async Task NonInHistoryModel_RewritesSystemHeadOnChange()
+    {
+        using var server = new MockDeepSeekServer(_ => SseTextOnly);
+        using var fixture = new HarnessFixture(server.BaseUrl);
+        var handle = await fixture.Agents.Create(new CreateAgentOptions(
+            SessionId.Create("session-replace"),
+            null,
+            new AgentOptions("test-provider", "test-model")));
+        var agent = (AgentLoopAgent)handle.Agent;
+
+        agent.Followup(MessageFactory.CreateUserText("hi"));
+        await agent.WhenIdle();
+        fixture.Ctx.Get<SystemPrompt>(SystemPrompt.ServiceName)!.ReplacePersona("persona v2");
+        agent.Followup(MessageFactory.CreateUserText("again"));
+        await agent.WhenIdle();
+
+        var systemEvents = agent.Session.SnapshotEvents()
+            .Where(e => e.Type == SessionEventTypes.SystemMessage)
+            .ToList();
+        Assert.Equal(2, systemEvents.Count);
+        Assert.IsType<SurfaceOp.Append>(systemEvents[0].SurfaceOp);
+        var replacement = Assert.IsType<SurfaceOp.Replace>(systemEvents[1].SurfaceOp);
+        Assert.Equal(systemEvents[0].Seq, replacement.Start);
+        Assert.Equal(systemEvents[0].Seq, replacement.End);
+        var messages = agent.Session.DeriveMessages();
+        Assert.Equal(MessageRole.System, messages[0].Role);
+        var single = Assert.Single(messages, message => message.Role == MessageRole.System);
+        Assert.Contains("persona v2", Assert.IsType<TextBlock>(single.Content[0]).Text);
+        Assert.Equal(1, server.LastRequestBody!.Split("\"role\":\"system\"").Length - 1);
     }
 }

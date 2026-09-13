@@ -59,7 +59,7 @@ public sealed class PlanModeController : Service
             var session = context.Agent.Session;
             var pending = _pendingIntents.TryGetValue(session, out var intent) ? intent.Active : LoggedActive(session);
             return pending ? section : "";
-        }));
+        }, Dynamic: true));
 
         var projections = ctx.Get<SessionProjectionRegistry>(SessionProjectionRegistry.ServiceName)
             ?? throw new InvalidOperationException("plan-mode requires the sessionProjections service");

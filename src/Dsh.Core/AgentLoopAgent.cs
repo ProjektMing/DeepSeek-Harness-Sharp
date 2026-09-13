@@ -42,6 +42,10 @@ public sealed class AgentLoopAgent : IAgent
     private bool _requestHeaderLogged;
     private int? _requestSurfaceGeneration;
     private readonly RuntimeContextProjection _runtimeContext;
+    private readonly SystemPromptProjection _systemPrompt;
+    private PromptAssembly? _pendingAssembly;
+    private string? _pendingReminder;
+    private string? _lastDynamicText;
 
     public AgentLoopAgent(Context loopCtx, SessionId id, AgentOptions options, Session session, Func<Session, int> lastTurnOf)
     {
@@ -60,6 +64,7 @@ public sealed class AgentLoopAgent : IAgent
         });
         _phase = new Phase.Idle { LastTurn = lastTurnOf(session) };
         _runtimeContext = new RuntimeContextProjection(Ctx, session);
+        _systemPrompt = new SystemPromptProjection(session);
     }
 
     internal static readonly object AgentContextKey = new();
@@ -230,6 +235,7 @@ public sealed class AgentLoopAgent : IAgent
             ?? throw new InvalidOperationException("agent loop requires the systemPrompt service");
         var assembly = await systemPrompt.Assemble(new AssembleContext(ScopeKey, signal, this));
         signal.ThrowIfCancellationRequested();
+        _pendingAssembly = assembly;
         var sections = PromptRender.RenderContextSections(assembly);
         var context = _runtimeContext.Project(PromptRender.JoinContextSections(sections), sections);
         var payload = new PreStepPayload(this, claimed, phase.Turn, phase.Step + 1, signal);
@@ -283,6 +289,13 @@ public sealed class AgentLoopAgent : IAgent
                 phase.Step = step;
                 try
                 {
+                    CommitSystemPrompt(turn, step, enter.StartsRequestSeries);
+                    if (_pendingReminder is { } reminder && enter.Messages.Count > 0)
+                    {
+                        var last = enter.Messages[^1];
+                        enter.Messages[^1] = last with { Content = [.. last.Content, new TextBlock($"\n\n{reminder}")] };
+                        _pendingReminder = null;
+                    }
                     foreach (var message in enter.Messages)
                         Session.Append(new UserMessagePayload(message), new SurfaceOp.Append());
                     var stepEnd = await Step(phase, enter.StartsRequestSeries);
@@ -346,14 +359,13 @@ public sealed class AgentLoopAgent : IAgent
         var signal = phase.Abort.Token;
         signal.ThrowIfCancellationRequested();
         var (turn, step) = (phase.Turn, phase.Step);
-        var systemPrompt = _loopCtx.Get<SystemPrompt>(SystemPrompt.ServiceName)!;
-        var assembly = await systemPrompt.Assemble(new AssembleContext(ScopeKey, signal, this));
-        var system = PromptRender.RenderPrompt(assembly);
+        var assembly = _pendingAssembly
+            ?? throw new InvalidOperationException("agent loop stepped without a prompt assembly");
 
         while (true)
         {
             var surfaceGeneration = Session.SurfaceManager.ReplaceGeneration;
-            var (request, preparedCall) = await BuildRequest(phase, assembly.Tools, system, Session.DeriveMessages(), startsRequestSeries, surfaceGeneration, signal);
+            var (request, preparedCall) = await BuildRequest(phase, assembly.Tools, Session.DeriveMessages(), startsRequestSeries, surfaceGeneration, signal);
             startsRequestSeries = false;
             var assembler = new BlockAssembler();
             var chunkSeqs = new List<long>();
@@ -423,10 +435,58 @@ public sealed class AgentLoopAgent : IAgent
         }
     }
 
+    private void CommitSystemPrompt(int turn, int step, bool startsRequestSeries)
+    {
+        if (_pendingAssembly is not { } assembly)
+            return;
+        var startsSeries = startsRequestSeries || _requestSurfaceGeneration != Session.SurfaceManager.ReplaceGeneration;
+        if (ResolveInHistory())
+        {
+            CommitProjected(turn, step, PromptRender.RenderPrompt(assembly), true, startsSeries);
+            return;
+        }
+        CommitProjected(turn, step, RenderSections(assembly, false), false, startsSeries);
+        var dynamicText = RenderSections(assembly, true);
+        if (dynamicText != _lastDynamicText)
+        {
+            _lastDynamicText = dynamicText;
+            _pendingReminder = dynamicText.Length == 0 ? null : $"<system-reminder>\n{dynamicText}\n</system-reminder>";
+        }
+    }
+
+    private void CommitProjected(int turn, int step, string rendered, bool inHistory, bool startsSeries)
+    {
+        foreach (var commit in _systemPrompt.Project(rendered, inHistory, startsSeries))
+            Session.Append(new SystemMessagePayload(turn, step, commit.Message), commit.Op, commit.SourceSeqs);
+    }
+
+    private static string RenderSections(PromptAssembly assembly, bool dynamic)
+        => PromptRender.RenderPrompt(assembly with
+        {
+            Sections = [.. assembly.Sections.Where(section => section.Dynamic == dynamic)],
+        });
+
+    private bool ResolveInHistory()
+    {
+        var persistedConfig = Session.RequestHeader()?.Config;
+        var provider = Options.Provider ?? persistedConfig?.Provider;
+        var model = Options.Model ?? persistedConfig?.Model;
+        var llm = _loopCtx.Get<LlmRuntime>(LlmRuntime.ServiceName);
+        if (provider is null || model is null || llm is null)
+            return false;
+        try
+        {
+            return llm.ResolveModelInfo(provider, model).SystemPromptUpdate == SystemPromptUpdateModes.InHistory;
+        }
+        catch (LlmException)
+        {
+            return false;
+        }
+    }
+
     private async Task<(GenerateOptions Request, PreparedLlmCall? PreparedCall)> BuildRequest(
         Phase.Running phase,
         IReadOnlyList<ToolSchema> tools,
-        string system,
         IReadOnlyList<Message> boundaryMessages,
         bool startsRequestSeries,
         int surfaceGeneration,
@@ -476,7 +536,6 @@ public sealed class AgentLoopAgent : IAgent
         var header = RequestHeader.Canonicalize(new EpochHeader(
             config,
             preparedCall?.AdapterDefaults,
-            string.IsNullOrEmpty(system) ? null : system,
             tools.Count > 0 ? tools : null));
         var baseline = session.RequestHeader();
         var startsSeries = startsRequestSeries || _requestSurfaceGeneration != surfaceGeneration;
@@ -495,11 +554,16 @@ public sealed class AgentLoopAgent : IAgent
         }
         _requestSurfaceGeneration = surfaceGeneration;
 
-        var requestContext = new RequestContextPayload(config.Provider, config.Model, preparedCall?.ContextWindow);
+        var requestContext = new RequestContextPayload(
+            config.Provider,
+            config.Model,
+            preparedCall?.ContextWindow,
+            preparedCall?.SystemPromptUpdate);
         var previousContext = session.RequestContext();
         if (previousContext?.Provider != requestContext.Provider
             || previousContext.Model != requestContext.Model
-            || previousContext.ContextWindow != requestContext.ContextWindow)
+            || previousContext.ContextWindow != requestContext.ContextWindow
+            || previousContext.SystemPromptUpdate != requestContext.SystemPromptUpdate)
         {
             session.Append(requestContext);
         }
@@ -511,7 +575,6 @@ public sealed class AgentLoopAgent : IAgent
             Model = config.Model,
             ReasoningEffort = config.ReasoningEffort,
             Messages = boundaryMessages,
-            System = header.System,
             Tools = header.Tools,
             Temperature = config.Temperature,
             MaxTokens = config.MaxTokens,
@@ -689,7 +752,12 @@ public sealed class AgentLoopAgent : IAgent
 
     private void AppendToolResult(int turn, int step, ToolExecutionInput call, ToolExecutionResult result, long callSeq)
     {
-        var message = MessageFactory.CreateToolResultMessage(call.CallId, result.Content, result.IsError);
+        var content = _pendingReminder is { } reminder
+            ? [.. result.Content, new TextBlock($"\n\n{reminder}")]
+            : result.Content;
+        if (_pendingReminder is not null)
+            _pendingReminder = null;
+        var message = MessageFactory.CreateToolResultMessage(call.CallId, content, result.IsError);
         Session.Append(new ToolResultPayload(
             turn,
             step,

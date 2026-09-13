@@ -386,14 +386,18 @@ public class SubagentTests
         var childRequest = fixture.Adapter.Requests[1];
         Assert.DoesNotContain(childRequest.Tools!, tool => tool.Name == "echo");
         Assert.Contains(childRequest.Tools!, tool => tool.Name == "subagent");
-        Assert.Contains("You are the research child.", childRequest.System);
+        Assert.Contains(childRequest.Messages, message =>
+            message.Role == MessageRole.System
+            && message.Content.OfType<TextBlock>().Any(block => block.Text.Contains("You are the research child.")));
         Assert.Contains(childRequest.Messages, message =>
             message.Content.OfType<TextBlock>().Any(block =>
                 block.Text.Contains("delegated subagent within your delegation scope")));
 
         var parentRequest = fixture.Adapter.Requests[0];
         Assert.Contains(parentRequest.Tools!, tool => tool.Name == "echo");
-        Assert.DoesNotContain("You are the research child.", parentRequest.System);
+        Assert.DoesNotContain(parentRequest.Messages, message =>
+            message.Role == MessageRole.System
+            && message.Content.OfType<TextBlock>().Any(block => block.Text.Contains("You are the research child.")));
     }
 
     [Fact]

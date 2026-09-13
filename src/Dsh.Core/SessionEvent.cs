@@ -34,6 +34,7 @@ public static class SessionEventCodec
         Register<ToolCallPayload>(SessionEventTypes.ToolCall);
         Register<ToolResultPayload>(SessionEventTypes.ToolResult);
         Register<RequestHeaderPayload>(SessionEventTypes.RequestHeader);
+        Register<SystemMessagePayload>(SessionEventTypes.SystemMessage);
         Register<RequestContextPayload>(SessionEventTypes.RequestContext);
         Register<SessionEndSeedPayload>(SessionEventTypes.SessionEndSeed);
         Register<InboxSplicePayload>(SessionEventTypes.AgentInboxSpliced);

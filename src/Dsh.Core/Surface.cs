@@ -23,11 +23,34 @@ public static class Surface
     public static Message? DeriveEventMessage(SessionEvent sessionEvent) => sessionEvent.Data switch
     {
         UserMessagePayload userMessage => userMessage.Message,
+        SystemMessagePayload { Message.Content.Count: > 0 } systemMessage => systemMessage.Message,
+        SystemMessagePayload => null,
         AssistantMessagePayload { Message.Content.Count: > 0 } assistantMessage => assistantMessage.Message,
         AssistantMessagePayload => null,
         ToolResultPayload toolResult => toolResult.Message,
         _ => null,
     };
+
+    private static void AssertSystemMessage(SessionEvent sessionEvent)
+    {
+        if (sessionEvent.Type != SessionEventTypes.SystemMessage || sessionEvent.Data is not SystemMessagePayload payload)
+            return;
+        if (payload.Message.Role != MessageRole.System)
+            throw new InvalidOperationException("system/message payload must carry a system-role message");
+        if (payload.Message.Source is not PluginMessageSource)
+            throw new InvalidOperationException("system/message payload must carry a plugin-sourced message");
+    }
+
+    private static void AssertSystemHeadRewrite(SessionEvent sessionEvent, FoldState state, int startIdx, int endIdx, IReadOnlyList<SessionEvent> events, long baseSeq)
+    {
+        if (startIdx != 0 || state.Nodes.Count == 0)
+            return;
+        if (events[(int)(state.Nodes[0] - baseSeq)].Type != SessionEventTypes.SystemMessage)
+            return;
+        if (sessionEvent.Type == SessionEventTypes.SystemMessage && endIdx == 0)
+            return;
+        throw new InvalidOperationException("surface replace: only a system/message event may replace surface node 0, exactly");
+    }
 
     private static void AssertProvenance(SessionEvent sessionEvent, IReadOnlyList<long> shadowedSeqs)
     {
@@ -113,6 +136,7 @@ public static class Surface
         if (surfaceOp is SurfaceOp.Append)
         {
             AssertProvenance(sessionEvent, []);
+            AssertSystemMessage(sessionEvent);
             return new Plan.Append(sessionEvent.Seq);
         }
         var replace = (SurfaceOp.Replace)surfaceOp;
@@ -124,6 +148,8 @@ public static class Surface
             throw new InvalidOperationException($"surface replace: end seq {replace.End} not found in surface");
         if (startIdx > endIdx)
             throw new InvalidOperationException($"surface replace: start seq {replace.Start} (index {startIdx}) is after end seq {replace.End} (index {endIdx})");
+        AssertSystemHeadRewrite(sessionEvent, state, startIdx, endIdx, events, baseSeq);
+        AssertSystemMessage(sessionEvent);
         var shadowed = state.Nodes.GetRange(startIdx, endIdx - startIdx + 1);
         AssertProvenance(sessionEvent, shadowed);
         AssertToolResultRewrite(sessionEvent, shadowed, events, baseSeq);

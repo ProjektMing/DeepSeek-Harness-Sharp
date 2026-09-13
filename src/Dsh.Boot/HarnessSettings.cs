@@ -114,6 +114,9 @@ public sealed class ProviderModelSettings
 
     [YamlMember(Alias = "tool_call")]
     public bool? ToolCall { get; set; }
+
+    [YamlMember(Alias = "system_prompt_update")]
+    public string? SystemPromptUpdate { get; set; }
 }
 
 public sealed class SubagentSettings

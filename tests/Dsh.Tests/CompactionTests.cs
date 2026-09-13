@@ -179,7 +179,8 @@ public class CompactionTests
         Assert.True(endEvent.Seq < stepStart2.Seq);
 
         var messages = agent.Session.DeriveMessages();
-        var checkpoint = Assert.IsType<UserMessage>(messages[0]);
+        Assert.Equal(MessageRole.System, messages[0].Role);
+        var checkpoint = Assert.IsType<UserMessage>(messages[1]);
         var source = Assert.IsType<PluginMessageSource>(checkpoint.Source);
         Assert.Equal(startPayload.CompactionId.Value, source.CompactionId);
         Assert.Null(source.SourceCommandId);
@@ -187,7 +188,7 @@ public class CompactionTests
         Assert.Contains(Summarizer.SummaryOpenTag, Assert.IsType<TextBlock>(checkpoint.Content[0]).Text);
         Assert.Equal(SummaryText, Assert.IsType<TextBlock>(checkpoint.Content[1]).Text);
         Assert.Equal(Summarizer.SummaryCloseTag, Assert.IsType<TextBlock>(checkpoint.Content[^1]).Text);
-        var retained = Assert.IsType<AssistantMessage>(messages[1]);
+        var retained = Assert.IsType<AssistantMessage>(messages[2]);
         Assert.Equal(new string('x', 200), Assert.IsType<TextBlock>(retained.Content[0]).Text);
 
         var summarization = harness.Adapter.LastCompactionOptions!;
@@ -309,7 +310,8 @@ public class CompactionTests
         Assert.True(end < commandDone);
 
         var messages = agent.Session.DeriveMessages();
-        var checkpoint = Assert.IsType<UserMessage>(messages[0]);
+        Assert.Equal(MessageRole.System, messages[0].Role);
+        var checkpoint = Assert.IsType<UserMessage>(messages[1]);
         var source = Assert.IsType<PluginMessageSource>(checkpoint.Source);
         Assert.Equal(execution.CommandId, source.SourceCommandId);
 
