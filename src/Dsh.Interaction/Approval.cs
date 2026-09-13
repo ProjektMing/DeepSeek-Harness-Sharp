@@ -167,6 +167,15 @@ public static class ApprovalAnswerers
     public static IDisposable DenyAll(Context ctx)
         => Answerer(ctx, ApprovalOutcome.Rejected);
 
+    public static IDisposable AutoApproveScoped(Context scopeCtx)
+    {
+        var remove = scopeCtx.On(
+            ApprovalEvents.Request,
+            (_, _) => new ValueTask<object?>(ApprovalOutcome.AllowedOnce),
+            new EventOptions { Prepend = true });
+        return new DisposeAction(() => remove());
+    }
+
     private static DisposeAction Answerer(Context ctx, ApprovalOutcome outcome)
     {
         var remove = ctx.On(

@@ -8,7 +8,7 @@ namespace Dsh.Acp;
 
 public sealed class AcpServer
 {
-    private sealed record AcpSessionRecord(AgentHandle Handle, IAgent Agent);
+    private sealed record AcpSessionRecord(AgentHandle Handle, IAgent Agent, IDisposable? Hooks);
 
     private sealed record NewSessionParams(string Cwd, JsonElement[]? AdditionalDirectories = null);
 
@@ -22,16 +22,19 @@ public sealed class AcpServer
     private readonly IJsonRpcPeer _transport;
     private readonly string? _provider;
     private readonly string? _model;
+    private readonly Func<Context, IDisposable>? _installAgentHooks;
     private readonly Dictionary<string, AcpSessionRecord> _sessions = [];
     private readonly List<Func<bool>> _disposers = [];
     private bool _closed;
 
-    public AcpServer(Context ctx, IJsonRpcPeer transport, string? provider = null, string? model = null)
+    public AcpServer(Context ctx, IJsonRpcPeer transport, string? provider = null, string? model = null,
+        Func<Context, IDisposable>? installAgentHooks = null)
     {
         _ctx = ctx;
         _transport = transport;
         _provider = provider;
         _model = model;
+        _installAgentHooks = installAgentHooks;
         _disposers.Add(ctx.On(SessionStore.EventEvent, (_, args) =>
         {
             var session = (Session)args[0]!;
@@ -93,6 +96,7 @@ public sealed class AcpServer
             record.Agent.Cancel(new AgentCancelCause.Disposed());
             if (sessions is not null)
                 await sessions.Flush(record.Agent.Session);
+            record.Hooks?.Dispose();
             record.Handle.Dispose.Dispose();
         }
         _sessions.Clear();
@@ -138,7 +142,7 @@ public sealed class AcpServer
             SessionId.Create(sessionId),
             parameters.Cwd,
             new AgentOptions(_provider, _model)));
-        _sessions[sessionId] = new AcpSessionRecord(handle, handle.Agent);
+        _sessions[sessionId] = new AcpSessionRecord(handle, handle.Agent, _installAgentHooks?.Invoke(handle.Agent.Ctx));
         return new Dictionary<string, object?>
         {
             ["sessionId"] = sessionId,
@@ -171,7 +175,7 @@ public sealed class AcpServer
         var handle = await agents.Resume(new ResumeAgentOptions(
             sessionId,
             new AgentOptions(_provider, _model)));
-        _sessions[parameters.SessionId] = new AcpSessionRecord(handle, handle.Agent);
+        _sessions[parameters.SessionId] = new AcpSessionRecord(handle, handle.Agent, _installAgentHooks?.Invoke(handle.Agent.Ctx));
         return new Dictionary<string, object?> { ["configOptions"] = Array.Empty<object?>() };
     }
 
@@ -183,6 +187,7 @@ public sealed class AcpServer
         var sessions = _ctx.Get<SessionStore>(SessionStore.ServiceName);
         if (sessions is not null)
             await sessions.Flush(record.Agent.Session);
+        record.Hooks?.Dispose();
         record.Handle.Dispose.Dispose();
         _sessions.Remove(parameters.SessionId);
         return new Dictionary<string, object?>();
