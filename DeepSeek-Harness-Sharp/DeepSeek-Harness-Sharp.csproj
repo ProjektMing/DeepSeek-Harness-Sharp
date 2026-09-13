@@ -24,16 +24,7 @@
       <Analyzer Include="..\src\Dsh.Plugins.Generator\bin\$(Configuration)\netstandard2.0\Dsh.Plugins.Generator.dll" />
     </ItemGroup>
 
-    <!--
-      NativeAOT 不支持运行时 Assembly.LoadFromAssemblyPath / Assembly.LoadFile。
-      ｜ 非 AOT 构建：主工程只引用 Dsh.Boot，插件由 CopyPluginAndSurfaceAssemblies 复制 DLL 后动态扫描加载。
-      ｜ AOT 发布（PublishAot=true）：运行时无法加载托管插件 DLL，因此必须把这些插件/表面工程一并编入 AOT 镜像；
-      ｜ 这里使用 PublishAot 条件 ProjectReference 通配自动包含 src/Dsh.*，仅影响 AOT 发布，不影响普通构建的零硬引用插件架构。
-      ｜ Dsh.Plugins.Generator 生成 DshPluginCatalog.g.cs，用 typeof(...) 引用所有 IDshPlugin 实现，
-      ｜ 使 AOT 裁剪/编译保留这些插件类型，从而 PluginHost 可通过已加载程序集注册插件。
-      参考：https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/ 与
-      https://github.com/dotnet/runtime/discussions/117470
-    -->
+    
     <ItemGroup Condition="'$(PublishAot)' == 'true'">
       <ProjectReference Include="..\src\Dsh.*\*.csproj"
                         Exclude="..\src\Dsh.Boot\Dsh.Boot.csproj;..\src\Dsh.Plugins.Abstractions\Dsh.Plugins.Abstractions.csproj;..\src\Dsh.Plugins.Host\Dsh.Plugins.Host.csproj;..\src\Dsh.Plugins.Generator\Dsh.Plugins.Generator.csproj" />
