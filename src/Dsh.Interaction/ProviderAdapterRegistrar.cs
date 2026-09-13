@@ -54,11 +54,32 @@ internal static class ProviderAdapterRegistrar
                 useResponses: useResponses);
             return llm.RegisterAdapter([providerId], adapter);
         }
-        return RegisterDeepSeekAdapter(providerId, baseUrl, apiKeyEnv, apiKey, options, credentials, llm);
+        return RegisterDeepSeekAdapter(providerId, provider, baseUrl, apiKeyEnv, apiKey, options, credentials, llm);
+    }
+
+    private static IReadOnlyList<DeepSeekCatalogModel> MergeCatalog(ProviderSettings? provider)
+    {
+        if (provider?.Models is not { Count: > 0 } models)
+            return DeepSeekCatalog;
+        var merged = DeepSeekCatalog.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
+        foreach (var (id, model) in models)
+        {
+            merged.TryGetValue(id, out var existing);
+            merged[id] = new DeepSeekCatalogModel(
+                id,
+                model.Name ?? existing?.Name,
+                existing?.Description,
+                existing?.ContextWindow,
+                existing?.MaxTokens,
+                existing?.InputModalities,
+                model.SystemPromptUpdate ?? existing?.SystemPromptUpdate);
+        }
+        return [.. merged.Values];
     }
 
     private static AdapterRegistrationHandle RegisterDeepSeekAdapter(
         string providerId,
+        ProviderSettings? provider,
         string baseUrl,
         string? apiKeyEnv,
         string? apiKey,
@@ -74,7 +95,7 @@ internal static class ProviderAdapterRegistrar
             new RequestDefaults(),
             DeepSeekConnectionOptions.DefaultMaxTokens,
             DeepSeekConnectionOptions.DefaultContextWindowValue,
-            DeepSeekCatalog,
+            MergeCatalog(provider),
             DeepSeekConnectionOptions.DefaultStreamIdleTimeoutMs,
             ResolvedRetryPolicy.Resolve(null, "llm-deepseek"));
         var adapter = new DeepSeekAdapter(providerId, new DeepSeekAdapterOptions

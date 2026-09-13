@@ -1,17 +1,39 @@
 using System.Text.Json;
 using Dsh.Core;
 using Dsh.Llm;
+using Microsoft.ML.Tokenizers;
 
 namespace Dsh.Compaction;
 
 public static class TokenEstimate
 {
-    public const int CharsPerToken = 4;
     public const int BlockOverhead = 4;
     public const int RoleOverhead = 4;
 
+    private const int FallbackCharsPerToken = 4;
+    private const string EncodingName = "o200k_base";
+
+    private static readonly Lazy<Tokenizer?> SharedTokenizer = new(CreateTokenizer);
+
+    private static Tokenizer? CreateTokenizer()
+    {
+        try
+        {
+            return TiktokenTokenizer.CreateForEncoding(EncodingName);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static int CountText(string text)
+        => SharedTokenizer.Value is { } tokenizer
+            ? tokenizer.CountTokens(text)
+            : (int)Math.Ceiling(text.Length / (double)FallbackCharsPerToken);
+
     public static int EstimateStructuralBlock(ContentBlock block)
-        => BlockOverhead + (int)Math.Ceiling(JsonSerializer.Serialize(block, DshJson.Options).Length / (double)CharsPerToken);
+        => BlockOverhead + CountText(JsonSerializer.Serialize(block, DshJson.Options));
 
     public static int EstimateContent(IReadOnlyList<ContentBlock> blocks)
     {
@@ -21,15 +43,13 @@ public static class TokenEstimate
             switch (block)
             {
                 case TextBlock text:
-                    tokens += (int)Math.Ceiling(text.Text.Length / (double)CharsPerToken) + BlockOverhead;
+                    tokens += CountText(text.Text) + BlockOverhead;
                     break;
                 case ReasoningBlock reasoning:
-                    tokens += (int)Math.Ceiling(reasoning.Text.Length / (double)CharsPerToken) + BlockOverhead;
+                    tokens += CountText(reasoning.Text) + BlockOverhead;
                     break;
                 case ToolCallBlock call:
-                    tokens += (int)Math.Ceiling(call.Name.Length / (double)CharsPerToken)
-                        + (int)Math.Ceiling(call.Arguments.Length / (double)CharsPerToken)
-                        + BlockOverhead;
+                    tokens += CountText(call.Name) + CountText(call.Arguments) + BlockOverhead;
                     break;
                 case ToolResultBlock result:
                     tokens += EstimateContent(result.Content) + BlockOverhead;
@@ -44,14 +64,11 @@ public static class TokenEstimate
 
     public static int EstimateMessage(Message message) => EstimateContent(message.Content) + RoleOverhead;
 
-    public static int EstimateSystemTokens(EpochHeader? header)
-        => header?.System is null ? 0 : (int)Math.Ceiling(header.System.Length / (double)CharsPerToken) + RoleOverhead;
-
     public static int EstimateToolsTokens(EpochHeader? header)
         => header?.Tools is not { Count: > 0 } tools
             ? 0
-            : (int)Math.Ceiling(JsonSerializer.Serialize(tools, DshJson.Options).Length / (double)CharsPerToken) + BlockOverhead;
+            : CountText(JsonSerializer.Serialize(tools, DshJson.Options)) + BlockOverhead;
 
     public static int EstimateHeader(EpochHeader? header)
-        => EstimateSystemTokens(header) + EstimateToolsTokens(header);
+        => EstimateToolsTokens(header);
 }

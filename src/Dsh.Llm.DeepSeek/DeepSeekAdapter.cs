@@ -11,7 +11,8 @@ public sealed record DeepSeekCatalogModel(
     string? Description = null,
     int? ContextWindow = null,
     int? MaxTokens = null,
-    IReadOnlyList<string>? InputModalities = null);
+    IReadOnlyList<string>? InputModalities = null,
+    string? SystemPromptUpdate = null);
 
 public sealed record DeepSeekConnectionOptions(
     string BaseUrl,
@@ -89,6 +90,13 @@ public sealed class DeepSeekAdapter : LlmAdapter
     {
         var connection = _config.Options();
         var configured = connection.Models.FirstOrDefault(entry => entry.Id == model);
+        if (configured?.SystemPromptUpdate is { } systemPromptUpdate
+            && systemPromptUpdate != SystemPromptUpdateModes.InHistory)
+        {
+            throw new LlmException(new LlmFailure(
+                $"catalog model \"{model}\" systemPromptUpdate must be \"{SystemPromptUpdateModes.InHistory}\" when present",
+                "INVALID_MODEL_INFO"));
+        }
         var contextWindow = configured?.ContextWindow ?? connection.DefaultContextWindow;
         var reasoning = ReasoningTable.Resolve(ProviderInfo.Id, model);
         reasoning ??= connection.Defaults.Thinking == "disabled"
@@ -108,7 +116,8 @@ public sealed class DeepSeekAdapter : LlmAdapter
             configured?.InputModalities ?? ["text"],
             contextWindow,
             configured?.MaxTokens ?? connection.MaxTokens,
-            reasoning);
+            reasoning,
+            configured?.SystemPromptUpdate);
     }
 
     public override PreparedAdapterCall PrepareCall(string model, CancellationToken cancellationToken)

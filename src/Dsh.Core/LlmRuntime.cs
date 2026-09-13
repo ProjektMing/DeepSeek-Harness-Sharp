@@ -8,7 +8,8 @@ public sealed record PreparedLlmCall(
     ResolvedRetryPolicy RetryPolicy,
     LlmCallConfigAdapterDefaults AdapterDefaults,
     int? ContextWindow,
-    Func<GenerateOptions, CancellationToken, IAsyncEnumerable<StreamChunk>> Stream);
+    Func<GenerateOptions, CancellationToken, IAsyncEnumerable<StreamChunk>> Stream,
+    string? SystemPromptUpdate = null);
 
 public sealed class AdapterRegistrationHandle : IDisposable
 {
@@ -106,7 +107,8 @@ public sealed class LlmRuntime : Service
                     throw new LlmException(new LlmFailure("prepared LLM call config changed before adapter dispatch", "INVALID_PREPARED_CALL"));
                 dispatched = true;
                 return StreamViaWaterfall(options, registration, adapterCall);
-            }));
+            },
+            modelInfo.SystemPromptUpdate));
     }
 
     private LlmCallConfig ResolveCallWithInfo(LlmCallConfig config, LlmResolvedModelInfo info)

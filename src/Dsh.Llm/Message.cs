@@ -208,6 +208,9 @@ public static class MessageFactory
     public static UserMessage CreateUserText(string text, MessageSource? source = null)
         => CreateUserMessage([new TextBlock(text)], source);
 
+    public static Message CreateSystemMessage(IReadOnlyList<ContentBlock> content, MessageSource source)
+        => new() { Id = NewId(), Role = MessageRole.System, Content = content, Source = source };
+
     public static AssistantMessage CreateAssistantMessage(IReadOnlyList<ContentBlock> content, string provider, string model, JsonElement? replayState = null)
         => new() { Id = NewId(), Content = content, ModelSource = new ModelMessageSource(provider, model, replayState) };
 

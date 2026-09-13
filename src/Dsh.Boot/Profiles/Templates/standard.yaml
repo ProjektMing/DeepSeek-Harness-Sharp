@@ -1,4 +1,5 @@
 - name: "@deepseek-ai/dsh-core"
+- name: "@deepseek-ai/dsh-agent-instructions"
 - name: "@deepseek-ai/dsh-interaction"
 - name: "@deepseek-ai/dsh-persistence"
 - name: "@deepseek-ai/dsh-mcp"

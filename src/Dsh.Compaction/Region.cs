@@ -60,6 +60,13 @@ public static class CompactionRegion
             || surfaceNodes.Where((seq, index) => seq != pricedNodes[index].Seq).Any())
             throw new InvalidOperationException("compaction: token-meter surface does not match the current session surface");
 
+        var firstEligibleIdx = 0;
+        while (firstEligibleIdx < surfaceNodes.Count
+            && session.EventAt(surfaceNodes[firstEligibleIdx])?.Type == SessionEventTypes.SystemMessage)
+        {
+            firstEligibleIdx++;
+        }
+
         var accumulated = 0;
         var keepFromIdx = pricedNodes.Count;
         for (var index = pricedNodes.Count - 1; index >= 0; index--)
@@ -69,17 +76,17 @@ public static class CompactionRegion
             if (accumulated >= retainTokens)
                 break;
         }
-        if (keepFromIdx == 0)
+        if (keepFromIdx <= firstEligibleIdx)
             return null;
-        while (keepFromIdx > 0)
+        while (keepFromIdx > firstEligibleIdx)
         {
             if (ToolPairing.BalancedBefore(session, surfaceNodes[keepFromIdx]))
                 break;
             keepFromIdx -= 1;
         }
-        if (keepFromIdx == 0)
+        if (keepFromIdx <= firstEligibleIdx)
             return null;
-        return new ShadowedRange(surfaceNodes[0], surfaceNodes[keepFromIdx - 1]);
+        return new ShadowedRange(surfaceNodes[firstEligibleIdx], surfaceNodes[keepFromIdx - 1]);
     }
 
     public static async Task<CompactionResult> CompactSurfaceRegion(
@@ -337,11 +344,16 @@ public static class CompactionRegion
     private static SummarizationInput BuildSummarizationInput(Session session, IReadOnlyList<long> shadowedSeqs)
     {
         var header = session.RequestHeader();
+        var systemNodes = session.SurfaceManager.Nodes;
+        var system = systemNodes.Count > 0
+            && session.EventAt(systemNodes[0])?.Data is SystemMessagePayload { Message.Content: [TextBlock headText, ..] }
+                ? headText.Text
+                : null;
         var regionMessages = shadowedSeqs
             .Select(seq => Surface.DeriveEventMessage(session.EventAt(seq)!))
             .OfType<Message>()
             .ToList();
-        return new SummarizationInput(header?.System, header?.Tools, regionMessages);
+        return new SummarizationInput(system, header?.Tools, regionMessages);
     }
 
     private static (int? OpenTurn, SessionEvent? UnmatchedCompactionStart, long? LatestEndSeedSeq) InspectCompactionEntryState(Session session)

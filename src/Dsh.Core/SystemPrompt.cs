@@ -5,7 +5,7 @@ namespace Dsh.Core;
 
 public sealed record AssembleContext(ScopeKey? Scope = null, CancellationToken Signal = default, IAgent? Agent = null);
 
-public sealed record PromptSection(string Name, int Order, Func<AssembleContext, string> Text, bool Complete = false)
+public sealed record PromptSection(string Name, int Order, Func<AssembleContext, string> Text, bool Complete = false, bool Dynamic = false)
 {
     public static PromptSection Literal(string name, int order, string text, bool complete = false)
         => new(name, order, _ => text, complete);
@@ -17,7 +17,7 @@ public sealed record PromptContext(string Name, int Order, Func<AssembleContext,
         => new(name, order, _ => text);
 }
 
-public sealed record AssembledSection(string Name, string Text);
+public sealed record AssembledSection(string Name, string Text, bool Dynamic = false);
 
 public sealed record AssembledContext(string Name, string Text);
 
@@ -35,6 +35,7 @@ public static class PromptOrders
     public const int HarnessSource = -900;
     public const int WebSurface = -800;
     public const int DeploymentPersona = 0;
+    public const int AgentInstructions = 100;
     public const int PlanPolicy = 500;
     public const int TeamPolicy = 600;
     public const int PtcOnly = 800;
@@ -215,7 +216,7 @@ public sealed class SystemPrompt : Service
         AssembledSection? completeSection = null;
         var sections = sectionDefinitions.Select(section =>
         {
-            var assembled = new AssembledSection(section.Name, section.Text(context));
+            var assembled = new AssembledSection(section.Name, section.Text(context), section.Dynamic);
             if (section.Complete)
                 completeSection = assembled;
             return assembled;

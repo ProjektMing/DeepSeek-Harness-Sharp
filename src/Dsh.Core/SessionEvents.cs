@@ -77,6 +77,11 @@ public sealed record UserMessagePayload(UserMessage Message) : SessionEventPaylo
     public override string Type => SessionEventTypes.UserMessage;
 }
 
+public sealed record SystemMessagePayload(int Turn, int Step, Message Message) : SessionEventPayload
+{
+    public override string Type => SessionEventTypes.SystemMessage;
+}
+
 public sealed record AssistantChunkPayload(int Turn, int Step, StreamChunk Chunk) : SessionEventPayload
 {
     public override string Type => SessionEventTypes.AssistantChunk;
@@ -112,7 +117,6 @@ public sealed record ToolResultPayload(
 public sealed record EpochHeader(
     LlmCallConfig Config,
     LlmCallConfigAdapterDefaults? AdapterDefaults = null,
-    string? System = null,
     IReadOnlyList<ToolSchema>? Tools = null);
 
 public sealed record LlmCallConfigAdapterDefaults(bool ReasoningEffort = false, bool MaxTokens = false);
@@ -130,7 +134,7 @@ public sealed record RequestHeaderPayload(EpochHeader Header, string Reason, boo
     public override string Type => SessionEventTypes.RequestHeader;
 }
 
-public sealed record RequestContextPayload(string Provider, string Model, int? ContextWindow = null) : SessionEventPayload
+public sealed record RequestContextPayload(string Provider, string Model, int? ContextWindow = null, string? SystemPromptUpdate = null) : SessionEventPayload
 {
     public override string Type => SessionEventTypes.RequestContext;
 }
@@ -152,6 +156,7 @@ public static class SessionEventTypes
     public const string StepStart = "step/start";
     public const string StepEnd = "step/end";
     public const string UserMessage = "user/message";
+    public const string SystemMessage = "system/message";
     public const string AssistantChunk = "assistant/chunk";
     public const string AssistantMessage = "assistant/message";
     public const string ToolCall = "tool/call";
@@ -163,6 +168,6 @@ public static class SessionEventTypes
 
     public static readonly IReadOnlySet<string> SurfaceEligible = new HashSet<string>
     {
-        UserMessage, AssistantMessage, ToolResult,
+        UserMessage, SystemMessage, AssistantMessage, ToolResult,
     };
 }

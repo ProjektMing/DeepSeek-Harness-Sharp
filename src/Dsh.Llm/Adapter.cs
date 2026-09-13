@@ -69,7 +69,13 @@ public sealed record LlmResolvedModelInfo(
     IReadOnlyList<string>? InputModalities = null,
     int? ContextWindow = null,
     int? DefaultMaxTokens = null,
-    LlmModelReasoningInfo? Reasoning = null);
+    LlmModelReasoningInfo? Reasoning = null,
+    string? SystemPromptUpdate = null);
+
+public static class SystemPromptUpdateModes
+{
+    public const string InHistory = "in-history";
+}
 
 public sealed record LlmModelReasoningInfo(IReadOnlyList<LlmReasoningEffortInfo> Efforts, ReasoningEffortId? DefaultEffort = null);
 
