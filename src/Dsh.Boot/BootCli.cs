@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Runtime.Loader;
 using Cordis;
 
@@ -75,7 +74,7 @@ public static class BootCli
         try
         {
             var clientType = RequireType("Dsh.Pty.PtyDaemonClient", "Dsh.Pty");
-            var task = (Task)clientType.GetMethod("ListAsync", Type.EmptyTypes)!.Invoke(null, null)!;
+            var task = (Task)clientType.GetMethod("ListAsync", [typeof(CancellationToken)])!.Invoke(null, [CancellationToken.None])!;
             await task;
             dynamic sessions = task.GetType().GetProperty("Result")!.GetValue(task)!;
             if (sessions.Count == 0)
@@ -87,7 +86,7 @@ public static class BootCli
                 Console.WriteLine($"{session.Id}\t{session.Command}\t{session.StartedAt:O}\t{session.Status}");
             return 0;
         }
-        catch (TargetInvocationException error) when (IsPtyDaemonNotRunning(error.InnerException))
+        catch (Exception error) when (IsPtyDaemonNotRunning(error))
         {
             Console.Error.WriteLine("daemon not running");
             return 1;
@@ -104,11 +103,11 @@ public static class BootCli
         try
         {
             var clientType = RequireType("Dsh.Pty.PtyDaemonClient", "Dsh.Pty");
-            var method = clientType.GetMethod("AttachAsync", [typeof(string), typeof(Stream), typeof(Stream)])!;
-            await (Task)method.Invoke(null, [id, Console.OpenStandardInput(), Console.OpenStandardOutput()])!;
+            var method = clientType.GetMethod("AttachAsync", [typeof(string), typeof(Stream), typeof(Stream), typeof(CancellationToken)])!;
+            await (Task)method.Invoke(null, [id, Console.OpenStandardInput(), Console.OpenStandardOutput(), CancellationToken.None])!;
             return 0;
         }
-        catch (TargetInvocationException error) when (IsPtyDaemonNotRunning(error.InnerException))
+        catch (Exception error) when (IsPtyDaemonNotRunning(error))
         {
             Console.Error.WriteLine("daemon not running");
             return 1;
@@ -123,7 +122,7 @@ public static class BootCli
     public static async Task<int> RunTuiDaemonAsync()
     {
         var daemonType = RequireType("Dsh.Pty.PtyDaemon", "Dsh.Pty");
-        await using var daemon = (IAsyncDisposable)Activator.CreateInstance(daemonType)!;
+        await using var daemon = (IAsyncDisposable)Activator.CreateInstance(daemonType, [null, null, null])!;
         dynamic daemonDynamic = daemon;
         await daemonDynamic.StartAsync();
         var shutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -259,7 +258,15 @@ public static class BootCli
     }
 
     private static bool IsPtyDaemonNotRunning(Exception? error)
-        => error?.GetType().Name == "PtyDaemonNotRunningException";
+    {
+        if (error is null)
+            return false;
+        if (error.GetType().Name == "PtyDaemonNotRunningException")
+            return true;
+        if (error is AggregateException aggregate)
+            return aggregate.InnerExceptions.Any(IsPtyDaemonNotRunning);
+        return error.InnerException is not null && IsPtyDaemonNotRunning(error.InnerException);
+    }
 
     private static Type RequireType(string typeName, string assemblyName)
     {

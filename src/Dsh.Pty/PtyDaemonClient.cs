@@ -112,8 +112,8 @@ public static class PtyDaemonClient
 
     private static void StartDaemonProcess()
     {
-        var executable = Environment.ProcessPath ?? "dotnet";
-        var assembly = Environment.GetCommandLineArgs()[0];
+        var executable = Environment.ProcessPath
+            ?? throw new InvalidOperationException("failed to resolve the current executable to start dsh tui daemon");
         var startInfo = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
@@ -121,7 +121,6 @@ public static class PtyDaemonClient
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        startInfo.ArgumentList.Add(assembly);
         startInfo.ArgumentList.Add("tui");
         startInfo.ArgumentList.Add("daemon");
         var process = Process.Start(startInfo);

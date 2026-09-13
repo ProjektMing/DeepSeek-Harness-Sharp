@@ -21,6 +21,7 @@ public static class PopupList
         if (y < area.Y)
             y = area.Y;
 
+        Fill(grid, x, y, width, height);
         DrawBorder(grid, x, y, width, height);
         DrawText(grid, x + 1, y, Truncate(title, width - 2), AnsiColor.BrightCyan, AnsiColor.Default, CellStyle.Bold);
 
@@ -44,6 +45,23 @@ public static class PopupList
                 selected ? AnsiColor.Black : AnsiColor.Default,
                 selected ? AnsiColor.BrightCyan : AnsiColor.Default,
                 selected ? CellStyle.Bold : CellStyle.None);
+        }
+    }
+
+    private static void Fill(CellGrid grid, int x, int y, int width, int height)
+    {
+        for (var row = 0; row < height; row++)
+        {
+            var targetY = y + row;
+            if (targetY < 0 || targetY >= grid.Height)
+                continue;
+            for (var column = 0; column < width; column++)
+            {
+                var targetX = x + column;
+                if (targetX < 0 || targetX >= grid.Width)
+                    continue;
+                grid[targetX, targetY] = new Cell(' ');
+            }
         }
     }
 

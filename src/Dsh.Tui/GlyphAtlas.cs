@@ -21,7 +21,8 @@ public sealed class GlyphAtlas
 
     private static readonly Lazy<GlyphAtlas> SharedInstance = new(() => new GlyphAtlas());
     private static readonly Lazy<Font> SharedFont = new(ResolveFont);
-    private static readonly Lazy<IReadOnlyList<FontFamily>> SharedFallbacks = new(ResolveFallbackFamilies);
+    private static readonly object FallbackGate = new();
+    private static IReadOnlyList<FontFamily> _fallbackFamilies = ResolveFallbackFamilies();
     private static readonly Lazy<float> SharedOffsetY = new(() => MeasureVerticalOffset(CreateOptions()));
 
     public static GlyphAtlas Shared => SharedInstance.Value;
@@ -185,9 +186,7 @@ public sealed class GlyphAtlas
         {
             var options = CreateOptions();
             options.Origin = new PointF(0, SharedOffsetY.Value);
-            var glyphs = TextBuilder.GenerateGlyphs(character.ToString(), options);
-            foreach (var glyph in glyphs)
-                canvas.Fill(Brushes.Solid(Color.White), glyph.Paths);
+            BakeGlyphs(canvas, character, options);
         }
 
         var slotX = (slot % Columns) * GlyphWidth;
@@ -283,10 +282,65 @@ public sealed class GlyphAtlas
         return uvs;
     }
 
+    private static void BakeGlyphs(DrawingCanvas canvas, char character, TextOptions options)
+    {
+        var text = character.ToString();
+        if (TryBakeGlyphs(canvas, text, options))
+            return;
+        var retry = CreateOptions();
+        retry.Origin = options.Origin;
+        TryBakeGlyphs(canvas, text, retry);
+    }
+
+    private static bool TryBakeGlyphs(DrawingCanvas canvas, string text, TextOptions options)
+    {
+        try
+        {
+            foreach (var glyph in TextBuilder.GenerateGlyphs(text, options))
+                canvas.Fill(Brushes.Solid(Color.White), glyph.Paths);
+            return true;
+        }
+        catch (Exception) when (RepairFallbacks(text[0]))
+        {
+            return false;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool RepairFallbacks(char character)
+    {
+        lock (FallbackGate)
+        {
+            var current = Volatile.Read(ref _fallbackFamilies);
+            var usable = current.Where(family => CanRenderWith(family, character)).ToList();
+            if (usable.Count == current.Count)
+                return false;
+            Volatile.Write(ref _fallbackFamilies, usable);
+            return true;
+        }
+    }
+
+    private static bool CanRenderWith(FontFamily family, char character)
+    {
+        try
+        {
+            return TextBuilder.GenerateGlyphs(character.ToString(), new TextOptions(family.CreateFont(FontSize))).Count > 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static IReadOnlyList<FontFamily> FallbackFamilies => Volatile.Read(ref _fallbackFamilies);
+
     private static TextOptions CreateOptions()
         => new(SharedFont.Value)
         {
-            FallbackFontFamilies = SharedFallbacks.Value,
+            FallbackFontFamilies = FallbackFamilies,
         };
 
     private static string DefaultCachePath()
@@ -327,11 +381,25 @@ public sealed class GlyphAtlas
         var families = new List<FontFamily>();
         foreach (var name in names)
         {
-            if (SystemFonts.TryGet(name, out var family))
+            if (SystemFonts.TryGet(name, out var family) && IsUsableFamily(family))
                 families.Add(family);
         }
 
         return families;
+    }
+
+    private static bool IsUsableFamily(FontFamily family)
+    {
+        try
+        {
+            _ = TextBuilder.GenerateGlyphs("a", new TextOptions(family.CreateFont(FontSize)));
+            _ = TextBuilder.GenerateGlyphs("😀", new TextOptions(family.CreateFont(FontSize)));
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static Font ResolveFont()

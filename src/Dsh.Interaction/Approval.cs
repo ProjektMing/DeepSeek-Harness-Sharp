@@ -1,3 +1,5 @@
+#pragma warning disable CA2255
+using System.Runtime.CompilerServices;
 using Cordis;
 using Dsh.Core;
 using Dsh.Llm;
@@ -44,13 +46,6 @@ public sealed class ApprovalService : Service, IApprovalService
     private const string AskSentence = "Approval policy: ask. Operations that require approval may ask through the configured answerers; without an available answerer, the request fails closed.";
 
     private readonly ApprovalConfig _config;
-
-    static ApprovalService()
-    {
-        SessionEventCodec.Register<ApprovalAskedPayload>(ApprovalEvents.Asked);
-        SessionEventCodec.Register<ApprovalDecidedPayload>(ApprovalEvents.Decided);
-        SessionEventCodec.Register<ApprovalPolicyPayload>(ApprovalEvents.Policy);
-    }
 
     public ApprovalService(Context ctx, ApprovalConfig? config = null) : base(ctx, ServiceName)
     {
@@ -196,5 +191,18 @@ internal sealed class DisposeAction(Action dispose) : IDisposable
             return;
         _disposed = true;
         dispose();
+    }
+}
+
+internal static class ApprovalCodecRegistration
+{
+    // 程序集加载即注册：审批事件可能在 ApprovalService 构造之前被日志读写。
+    // ReSharper disable once All
+    [ModuleInitializer]
+    internal static void Register()
+    {
+        SessionEventCodec.Register<ApprovalAskedPayload>(ApprovalEvents.Asked);
+        SessionEventCodec.Register<ApprovalDecidedPayload>(ApprovalEvents.Decided);
+        SessionEventCodec.Register<ApprovalPolicyPayload>(ApprovalEvents.Policy);
     }
 }

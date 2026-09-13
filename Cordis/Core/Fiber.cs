@@ -395,10 +395,26 @@ public sealed class Fiber
         if (oldState == State) return;
         Ctx.Events.Emit(null, EventNames.Status, this, oldState);
         if (oldState != FiberState.Active && State != FiberState.Active) return;
-        foreach (var (_, impl) in Ctx.Reflect.Store.ToList())
+        foreach (var (_, impl) in SnapshotStore())
         {
             if (!ReferenceEquals(impl.Fiber, this)) continue;
             Ctx.Reflect.Notify([impl.Name]);
+        }
+    }
+
+    private List<KeyValuePair<CordisSymbol, Impl>> SnapshotStore()
+    {
+        // Store 可能被其它 fiber 的 Provide/Remove 并发写入:Dictionary 在 Count 与 CopyTo 之间变化会让 List 拷贝抛 ArgumentException,这里做有限重试。
+        for (var attempts = 0; ; attempts++)
+        {
+            try
+            {
+                return Ctx.Reflect.Store.ToList();
+            }
+            catch (ArgumentException) when (attempts < 16)
+            {
+                Thread.Yield();
+            }
         }
     }
 

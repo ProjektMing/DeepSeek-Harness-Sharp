@@ -1,3 +1,5 @@
+#pragma warning disable CA2255
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Cordis;
 using Dsh.Core;
@@ -161,12 +163,6 @@ public sealed partial class CommandsService : Service
     private readonly string _instanceToken = Guid.NewGuid().ToString("N")[..8];
     private int _commandSeq;
 
-    static CommandsService()
-    {
-        SessionEventCodec.Register<CommandRunPayload>(CommandEvents.Run);
-        SessionEventCodec.Register<CommandDonePayload>(CommandEvents.Done);
-    }
-
     public CommandsService(Context ctx) : base(ctx, ServiceName)
     {
         _layers = new ScopedLayers<CommandLayer>(scope => new CommandLayer(scope), () => ctx.Emit(CommandEvents.Change));
@@ -287,5 +283,17 @@ public sealed partial class CommandsService : Service
         if (definition.Input is { } input && string.IsNullOrWhiteSpace(input.Hint))
             throw new ArgumentException($"command \"{definition.Name}\" input hint must not be empty");
         return definition;
+    }
+}
+
+internal static class CommandCodecRegistration
+{
+    // 程序集加载即注册：命令事件可能在 CommandsService 构造之前被日志读写。
+    // ReSharper disable once All
+    [ModuleInitializer]
+    internal static void Register()
+    {
+        SessionEventCodec.Register<CommandRunPayload>(CommandEvents.Run);
+        SessionEventCodec.Register<CommandDonePayload>(CommandEvents.Done);
     }
 }

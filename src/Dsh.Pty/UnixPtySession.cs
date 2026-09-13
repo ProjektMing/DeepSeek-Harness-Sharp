@@ -32,8 +32,9 @@ internal sealed class UnixPtySession : IDisposable
             throw new PlatformNotSupportedException("Unix PTY backend is not available on Windows");
 
         var (master, pid) = UnixPtyNative.Spawn(info);
-        var handle = new SafeFileHandle((IntPtr)master, ownsHandle: true);
-        var stream = new FileStream(handle, FileAccess.ReadWrite, 4096, isAsync: false);
+        var handle = new SafeFileHandle(master, ownsHandle: true);
+        // 无缓冲:带缓冲的同步 FileStream 会让并发读(输出泵)与写(输入泵)互相阻塞,导致 attach 之后数据无法流动。
+        var stream = new FileStream(handle, FileAccess.ReadWrite, 1, isAsync: false);
         var session = new UnixPtySession(pid, handle, stream);
         session._monitorTask = session.MonitorAsync();
         return session;

@@ -1,3 +1,4 @@
+using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Llm;
 using Dsh.Llm.DeepSeek;
@@ -8,7 +9,7 @@ public sealed class DeepSeekInHistorySmokeTests
 {
     private static (DeepSeekAdapter Adapter, string Model)? ResolveRealAdapter()
     {
-        var settings = Dsh.Boot.HarnessSettings.Load(Dsh.Boot.HarnessHome.Resolve());
+        var settings = HarnessSettings.Load(HarnessHome.Resolve());
         if (!settings.Providers.TryGetValue("deepseek-official", out var provider))
             return null;
         var apiKey = provider.Options?.ApiKey;
@@ -42,6 +43,7 @@ public sealed class DeepSeekInHistorySmokeTests
             Provider = "deepseek-official",
             Model = model,
             Messages = messages,
+            Temperature = 0,
         }, CancellationToken.None))
         {
             switch (chunk)
@@ -74,7 +76,7 @@ public sealed class DeepSeekInHistorySmokeTests
         var assistant1 = MessageFactory.CreateAssistantMessage(
             [new TextBlock("ALPHA")], "deepseek-official", model);
 
-        var first = await RunOnce(adapter, model,
+        _ = await RunOnce(adapter, model,
         [
             MessageFactory.CreateSystemMessage(
                 [new TextBlock($"{stable}\nReply with the single token ALPHA.")],

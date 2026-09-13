@@ -41,8 +41,10 @@ public sealed class ChatWindow : IDisposable
     private volatile bool _stickToBottom = true;
     private IReadOnlyList<string>? _mcpPanelLines;
     private string _statusText = "ready — Enter to send, ↑ history, Esc cancels a running turn, Ctrl+C×2 quits";
+    private const long ExitConfirmWindowMs = 2000;
+
     private bool _exitRequested;
-    private DateTime? _exitConfirmAt;
+    private long? _exitConfirmAt;
     private bool _ctrlXPrefix;
     private string? _deleteConfirmSessionId;
     private int _wrapCacheVersion = -1;
@@ -171,17 +173,18 @@ public sealed class ChatWindow : IDisposable
                 case ConsoleKey.C:
                     if (_busy)
                     {
+                        ClearExitConfirm();
                         _agent.Cancel(new AgentCancelCause.User());
                         return;
                     }
                     if (_exitConfirmAt is { } firstPress
-                        && (DateTime.UtcNow - firstPress).TotalSeconds <= 2)
+                        && Environment.TickCount64 - firstPress <= ExitConfirmWindowMs)
                     {
                         _exitConfirmAt = null;
                         RequestExit();
                         return;
                     }
-                    _exitConfirmAt = DateTime.UtcNow;
+                    _exitConfirmAt = Environment.TickCount64;
                     _statusText = "再按一次 Ctrl+C 退出";
                     return;
                 default:

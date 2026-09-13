@@ -44,6 +44,32 @@ public sealed class GpuRenderer : IDisposable
     private readonly string? _screenshotPath = Environment.GetEnvironmentVariable("DSH_GPU_SCREENSHOT");
     private bool _screenshotTaken;
 
+    public static bool TryDetectDisplay(out string reason)
+    {
+        reason = "";
+        if (!OperatingSystem.IsLinux() || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+            return true;
+        var display = Environment.GetEnvironmentVariable("DISPLAY");
+        if (string.IsNullOrEmpty(display))
+        {
+            reason = "no display server detected (neither DISPLAY nor WAYLAND_DISPLAY is set)";
+            return false;
+        }
+        if (display.StartsWith(':') && !File.Exists(Path.Combine("/tmp/.X11-unix", $"X{ScreenOf(display)}")))
+        {
+            reason = $"no display server detected (X11 socket for DISPLAY={display} is missing)";
+            return false;
+        }
+        return true;
+    }
+
+    private static string ScreenOf(string display)
+    {
+        var value = display[1..];
+        var dot = value.IndexOf('.');
+        return dot < 0 ? value : value[..dot];
+    }
+
     public GpuRenderer(ChatWindow chat)
     {
         ArgumentNullException.ThrowIfNull(chat);

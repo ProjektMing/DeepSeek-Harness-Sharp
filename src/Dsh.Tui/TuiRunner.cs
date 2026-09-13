@@ -122,6 +122,8 @@ public static class TuiRunner
 
         try
         {
+            if (!GpuRenderer.TryDetectDisplay(out var unavailableReason))
+                return ReturnGpuUnavailable(app, agent, unavailableReason);
             var prewarm = Task.Run(() => GlyphAtlas.Shared.Prewarm());
             using var chat = new ChatWindow(app.Ctx, agent, app.Home, app.Ctx.Get<ISessionPersistence>(Persistence.Plugin.ServiceName));
             using var renderer = new GpuRenderer(chat);
@@ -140,11 +142,16 @@ public static class TuiRunner
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine($"GPU unavailable: {error.Message}");
-            if (Console.IsInputRedirected)
-                return 1;
-            return RunInteractiveAsync(app, agent).GetAwaiter().GetResult();
+            return ReturnGpuUnavailable(app, agent, error.Message);
         }
+    }
+
+    private static int ReturnGpuUnavailable(HarnessApp app, AgentLoopAgent agent, string reason)
+    {
+        Console.Error.WriteLine($"GPU unavailable: {reason}");
+        if (Console.IsInputRedirected)
+            return 1;
+        return RunInteractiveAsync(app, agent).GetAwaiter().GetResult();
     }
 
     private static void SetConsoleInteractive(bool interactive)
