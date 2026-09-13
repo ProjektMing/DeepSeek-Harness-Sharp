@@ -1,6 +1,4 @@
 using System.Runtime.Loader;
-using System.Collections;
-using System.Reflection;
 using Cordis.Loader;
 
 namespace Dsh.Plugins;
@@ -43,27 +41,8 @@ public sealed class PluginHost
 
     public void RegisterGeneratedCatalog()
     {
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            var type = assembly.GetType("Dsh.Plugins.Generated.DshPluginCatalog");
-            if (type is null)
-                continue;
-
-            var method = type.GetMethod("GetPlugins", BindingFlags.Public | BindingFlags.Static);
-            if (method is null)
-                continue;
-
-            var entries = (IEnumerable)method.Invoke(null, null)!;
-            foreach (var entry in entries)
-            {
-                var entryType = entry.GetType();
-                var package = (string)entryType.GetProperty("Package")!.GetValue(entry)!;
-                var implementation = (Type)entryType.GetProperty("Implementation")!.GetValue(entry)!;
-                Catalog.RegisterPlugin(package, implementation);
-            }
-
-            return;
-        }
+        foreach (var entry in DshPluginCatalogRegistry.Snapshot())
+            Catalog.RegisterPlugin(entry.Package, entry.Implementation);
     }
 
     public void RegisterBuiltins(Loader loader)

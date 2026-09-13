@@ -38,6 +38,12 @@ public sealed partial class DshPluginCatalogGenerator
         public const string Footer = """
                         return list;
                     }
+
+                    static DshPluginCatalog()
+                    {
+                        foreach (var entry in GetPlugins())
+                            Dsh.Plugins.DshPluginCatalogRegistry.Register(entry.Package, entry.Implementation);
+                    }
                 }
             }
 
