@@ -122,12 +122,12 @@ public sealed class SdkTests
             {
                 emitReceived.TrySetResult(((JsonElement)args[0]!).GetString()!);
                 return new ValueTask<object?>();
-            }, new Cordis.EventOptions { Global = true });
+            }, new Dsh.Runtime.EventOptions { Global = true });
             await server.HandleRequestAsync(SdkMethods.CordisEventEmit,
                 JsonSerializer.SerializeToElement(new CordisEventParams("gateway/test", [JsonSerializer.SerializeToElement("ping")]), DshJson.Options));
             Assert.Equal("ping", await emitReceived.Task.WaitAsync(TimeSpan.FromSeconds(2)));
 
-            app.Ctx.On("gateway/query", (_, _) => new ValueTask<object?>("pong"), new Cordis.EventOptions { Global = true });
+            app.Ctx.On("gateway/query", (_, _) => new ValueTask<object?>("pong"), new Dsh.Runtime.EventOptions { Global = true });
             var serialResult = await server.HandleRequestAsync(SdkMethods.CordisEventSerial,
                 JsonSerializer.SerializeToElement(new CordisEventParams("gateway/query"), DshJson.Options));
             Assert.Equal("pong", ((JsonElement)serialResult!).GetString());

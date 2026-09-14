@@ -1,4 +1,5 @@
-using Cordis;
+using Dsh.Runtime;
+using Dsh.Runtime.Composition;
 
 namespace Dsh.Boot;
 
@@ -20,6 +21,7 @@ public sealed class HarnessApp : IDisposable
     public required string Provider { get; init; }
     public required string Model { get; init; }
     public required string? ReasoningEffort { get; init; }
+    public Composition? Composition { get; set; }
 
     private readonly List<IDisposable> _disposables = [];
 

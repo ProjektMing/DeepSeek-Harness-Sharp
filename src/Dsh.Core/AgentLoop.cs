@@ -1,4 +1,4 @@
-using Cordis;
+using Dsh.Runtime;
 using Dsh.Llm;
 
 namespace Dsh.Core;
@@ -43,13 +43,14 @@ public sealed class AgentLoop : Service, IAgentFactory
     {
         var sessions = Ctx.Get<SessionStore>(SessionStore.ServiceName)
             ?? throw new InvalidOperationException("agent loop requires the sessions service");
+        var sessionId = options.SessionId ?? SessionId.Create(Guid.NewGuid().ToString());
         var session = sessions.Create(
-            options.SessionId,
+            sessionId,
             options.Seed,
             new SessionHeader
             {
                 Version = SessionHeader.SessionFormatVersion,
-                Id = options.SessionId ?? SessionId.Create(Guid.NewGuid().ToString()),
+                Id = sessionId,
                 CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 Cwd = options.Cwd,
                 IsSeeded = options.Seed is not null,

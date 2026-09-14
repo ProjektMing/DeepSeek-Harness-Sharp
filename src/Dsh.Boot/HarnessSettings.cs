@@ -35,6 +35,9 @@ public sealed class HarnessSettings
     [YamlMember(Alias = "memory")]
     public MemorySettings? Memory { get; set; }
 
+    [YamlMember(Alias = "checkpoints")]
+    public CheckpointsSettings? Checkpoints { get; set; }
+
     private const string MinimalSettingsTemplate = """
         global_default_model: deepseek-official/deepseek-v4-flash
         compaction_model: deepseek-official/deepseek-v4-flash
@@ -159,6 +162,21 @@ public sealed class MemorySettings
 
     [YamlMember(Alias = "file")]
     public string? File { get; set; }
+}
+
+public sealed class CheckpointsSettings
+{
+    public const int DefaultMaxPoints = 256;
+    public const int DefaultKeepDays = 15;
+
+    [YamlMember(Alias = "enabled")]
+    public bool Enabled { get; set; }
+
+    [YamlMember(Alias = "max_points")]
+    public int MaxPoints { get; set; } = DefaultMaxPoints;
+
+    [YamlMember(Alias = "keep_days")]
+    public int KeepDays { get; set; } = DefaultKeepDays;
 }
 
 public sealed class McpServerSettings

@@ -1,7 +1,7 @@
 #pragma warning disable CA2255
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using Cordis;
+using Dsh.Runtime;
 using Dsh.Core;
 
 namespace Dsh.Interaction;

@@ -13,6 +13,7 @@ namespace Dsh.Boot;
 [YamlSerializable(typeof(SafetySettings))]
 [YamlSerializable(typeof(MemorySettings))]
 [YamlSerializable(typeof(McpServerSettings))]
+[YamlSerializable(typeof(CheckpointsSettings))]
 public partial class DshYamlStaticContext : StaticContext
 {
 }

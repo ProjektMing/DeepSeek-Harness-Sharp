@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using Cordis;
+using Dsh.Runtime;
 using Dsh.Core;
 using Dsh.Llm;
 using Dsh.Web;

@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
-using Cordis;
+using Dsh.Runtime;
 using Dsh.Acp;
 using Dsh.Core;
 using Dsh.Interaction;

@@ -19,7 +19,7 @@ public sealed class AcpTests
             """);
         var output = new StringWriter();
         await using var transport = new JsonRpcLineTransport(input, output);
-        var server = new AcpServer(new Cordis.Context(), transport);
+        var server = new AcpServer(new Dsh.Runtime.Context(), transport);
         transport.RequestHandler = server.HandleRequestAsync;
         transport.Start();
         await WaitUntilAsync(() => output.ToString().Contains("deepseek-harness-acp"));

@@ -28,10 +28,28 @@
     <ItemGroup Condition="'$(PublishAot)' == 'true'">
       <ProjectReference Include="..\src\Dsh.*\*.csproj"
                         Exclude="..\src\Dsh.Boot\Dsh.Boot.csproj;..\src\Dsh.Plugins.Abstractions\Dsh.Plugins.Abstractions.csproj;..\src\Dsh.Plugins.Host\Dsh.Plugins.Host.csproj;..\src\Dsh.Plugins.Generator\Dsh.Plugins.Generator.csproj" />
+      <!-- 工具结果记录通过反射式 System.Text.Json 序列化(ToolRuntime.SnapshotValue),裁剪属性会导致 AOT 下工具输出缺字段而报错,因此保留各插件程序集成员。 -->
+      <TrimmerRootAssembly Include="Dsh.Core" />
+      <TrimmerRootAssembly Include="Dsh.Tools" />
+      <TrimmerRootAssembly Include="Dsh.Goal" />
+      <TrimmerRootAssembly Include="Dsh.Jobs" />
+      <TrimmerRootAssembly Include="Dsh.Mcp" />
+      <TrimmerRootAssembly Include="Dsh.Skills" />
+      <TrimmerRootAssembly Include="Dsh.Subagent" />
+      <TrimmerRootAssembly Include="Dsh.Terminal" />
+      <TrimmerRootAssembly Include="Dsh.Workflow" />
+      <TrimmerRootAssembly Include="Dsh.Interaction" />
+      <TrimmerRootAssembly Include="Dsh.Interaction.AskUser" />
+      <TrimmerRootAssembly Include="Dsh.Checkpoints" />
+      <TrimmerRootAssembly Include="Dsh.IdeHistory" />
+      <TrimmerRootAssembly Include="Dsh.Llm" />
+      <TrimmerRootAssembly Include="Dsh.Persistence" />
+      <TrimmerRootAssembly Include="Dsh.Pty" />
+      <TrimmerRootAssembly Include="Dsh.Sdk" />
     </ItemGroup>
 
     <Target Name="CopyPluginAndSurfaceAssemblies" AfterTargets="Build">
-      <MSBuild Projects="..\src\Dsh.Core\Dsh.Core.csproj;..\src\Dsh.AgentInstructions\Dsh.AgentInstructions.csproj;..\src\Dsh.Persistence\Dsh.Persistence.csproj;..\src\Dsh.Mcp\Dsh.Mcp.csproj;..\src\Dsh.Tools\Dsh.Tools.csproj;..\src\Dsh.Interaction\Dsh.Interaction.csproj;..\src\Dsh.Skills\Dsh.Skills.csproj;..\src\Dsh.Goal\Dsh.Goal.csproj;..\src\Dsh.Compaction\Dsh.Compaction.csproj;..\src\Dsh.Jobs\Dsh.Jobs.csproj;..\src\Dsh.Subagent\Dsh.Subagent.csproj;..\src\Dsh.PlanMode\Dsh.PlanMode.csproj;..\src\Dsh.Web\Dsh.Web.csproj;..\src\Dsh.Workflow\Dsh.Workflow.csproj;..\src\Dsh.Terminal\Dsh.Terminal.csproj;..\src\Dsh.Interaction.AskUser\Dsh.Interaction.AskUser.csproj;..\src\Dsh.Llm\Dsh.Llm.csproj;..\src\Dsh.Llm.DeepSeek\Dsh.Llm.DeepSeek.csproj;..\src\Dsh.Llm.OpenAi\Dsh.Llm.OpenAi.csproj;..\src\Dsh.Llm.Anthropic\Dsh.Llm.Anthropic.csproj;..\src\Dsh.Tui\Dsh.Tui.csproj;..\src\Dsh.Acp\Dsh.Acp.csproj;..\src\Dsh.Lsp\Dsh.Lsp.csproj;..\src\Dsh.Sdk\Dsh.Sdk.csproj;..\src\Dsh.Pty\Dsh.Pty.csproj" Targets="Build" Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;PublishAot;SelfContained" />
+      <MSBuild Projects="..\src\Dsh.Core\Dsh.Core.csproj;..\src\Dsh.AgentInstructions\Dsh.AgentInstructions.csproj;..\src\Dsh.Persistence\Dsh.Persistence.csproj;..\src\Dsh.Mcp\Dsh.Mcp.csproj;..\src\Dsh.Tools\Dsh.Tools.csproj;..\src\Dsh.Interaction\Dsh.Interaction.csproj;..\src\Dsh.Skills\Dsh.Skills.csproj;..\src\Dsh.Goal\Dsh.Goal.csproj;..\src\Dsh.Compaction\Dsh.Compaction.csproj;..\src\Dsh.Jobs\Dsh.Jobs.csproj;..\src\Dsh.Subagent\Dsh.Subagent.csproj;..\src\Dsh.PlanMode\Dsh.PlanMode.csproj;..\src\Dsh.Web\Dsh.Web.csproj;..\src\Dsh.Workflow\Dsh.Workflow.csproj;..\src\Dsh.Terminal\Dsh.Terminal.csproj;..\src\Dsh.Interaction.AskUser\Dsh.Interaction.AskUser.csproj;..\src\Dsh.Llm\Dsh.Llm.csproj;..\src\Dsh.Llm.DeepSeek\Dsh.Llm.DeepSeek.csproj;..\src\Dsh.Llm.OpenAi\Dsh.Llm.OpenAi.csproj;..\src\Dsh.Llm.Anthropic\Dsh.Llm.Anthropic.csproj;..\src\Dsh.Tui\Dsh.Tui.csproj;..\src\Dsh.Acp\Dsh.Acp.csproj;..\src\Dsh.Lsp\Dsh.Lsp.csproj;..\src\Dsh.Sdk\Dsh.Sdk.csproj;..\src\Dsh.Pty\Dsh.Pty.csproj;..\src\Dsh.Checkpoints\Dsh.Checkpoints.csproj;..\src\Dsh.IdeHistory\Dsh.IdeHistory.csproj" Targets="Build" Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;PublishAot;SelfContained" />
       <ItemGroup>
         <PluginAndSurfaceAssemblies Include="..\src\Dsh.Core\bin\$(Configuration)\net10.0\*.dll" />
         <PluginAndSurfaceAssemblies Include="..\src\Dsh.Persistence\bin\$(Configuration)\net10.0\*.dll" />
@@ -58,6 +76,8 @@
         <PluginAndSurfaceAssemblies Include="..\src\Dsh.Lsp\bin\$(Configuration)\net10.0\*.dll" />
         <PluginAndSurfaceAssemblies Include="..\src\Dsh.Sdk\bin\$(Configuration)\net10.0\*.dll" />
         <PluginAndSurfaceAssemblies Include="..\src\Dsh.Pty\bin\$(Configuration)\net10.0\*.dll" />
+        <PluginAndSurfaceAssemblies Include="..\src\Dsh.Checkpoints\bin\$(Configuration)\net10.0\*.dll" />
+        <PluginAndSurfaceAssemblies Include="..\src\Dsh.IdeHistory\bin\$(Configuration)\net10.0\*.dll" />
       </ItemGroup>
       <Copy SourceFiles="@(PluginAndSurfaceAssemblies)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
     </Target>

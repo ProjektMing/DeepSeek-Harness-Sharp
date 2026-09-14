@@ -1,24 +1,26 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
-using Cordis;
+using System.Runtime.Loader;
+using Dsh.Runtime;
 
 namespace Dsh.Plugins;
 
 public sealed class PluginCatalog
 {
-    private readonly Dictionary<string, PluginTypeHolder> _plugins = new();
+    private readonly Dictionary<string, PluginTypeHolder> _plugins = new(StringComparer.Ordinal);
 
     public IReadOnlyCollection<string> PackageNames => _plugins.Keys;
 
     public IReadOnlyList<(string Package, Type Implementation)> Enumerate()
         => _plugins.Select(entry => (entry.Key, entry.Value.Type)).ToList();
 
-    public void RegisterAssembly(Assembly assembly)
+    public IReadOnlyList<string> RegisterAssembly(Assembly assembly, AssemblyLoadContext? context = null)
     {
         var attributes = assembly.GetCustomAttributes<DshPluginAttribute>().ToList();
         if (attributes.Count == 0)
-            return;
+            return [];
         var pluginType = FindPluginType(assembly);
+        var registered = new List<string>();
         foreach (var attribute in attributes)
         {
             if (_plugins.TryGetValue(attribute.PackageName, out var existing))
@@ -26,8 +28,10 @@ public sealed class PluginCatalog
                 throw new InvalidOperationException(
                     $"Plugin package '{attribute.PackageName}' is already registered by {existing.Type.FullName}; cannot also register {pluginType.FullName}.");
             }
-            _plugins[attribute.PackageName] = new PluginTypeHolder(pluginType);
+            _plugins[attribute.PackageName] = new PluginTypeHolder(pluginType, context);
+            registered.Add(attribute.PackageName);
         }
+        return registered;
     }
 
     public void RegisterPlugin(string packageName, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type pluginType)
@@ -40,7 +44,7 @@ public sealed class PluginCatalog
                 $"Plugin package '{packageName}' is already registered by {existing.Type.FullName}; cannot also register {pluginType.FullName}.");
         }
 
-        _plugins[packageName] = new PluginTypeHolder(pluginType);
+        _plugins[packageName] = new PluginTypeHolder(pluginType, null);
     }
 
     public bool TryCreate(string packageName, out IDshPlugin? plugin)
@@ -72,6 +76,13 @@ public sealed class PluginCatalog
             throw new KeyNotFoundException($"Plugin package '{packageName}' is not registered.");
         }
         return CreateDefinition(holder.Type, packageName);
+    }
+
+    public AssemblyLoadContext? Remove(string packageName)
+    {
+        if (!_plugins.Remove(packageName, out var holder))
+            return null;
+        return holder.Context;
     }
 
     private static Type FindPluginType(Assembly assembly)
@@ -106,13 +117,8 @@ public sealed class PluginCatalog
         return new PluginDefinition
         {
             Name = packageName,
-            Inject = instance.Inject.ToDictionary(name => name, _ => (object?)null),
-            Callback = new DelegatePluginCallback((ctx, config) =>
-            {
-                var plugin = CreatePlugin(pluginType, packageName);
-                var registration = plugin.Apply(ctx, config);
-                return (Action)(() => registration.Dispose());
-            }),
+            Inject = instance.Inject,
+            Apply = (ctx, config) => CreatePlugin(pluginType, packageName).Apply(ctx, config),
         };
     }
 
@@ -123,14 +129,11 @@ public sealed class PluginCatalog
         return (IDshPlugin)Activator.CreateInstance(pluginType)!;
     }
 
-    private sealed class PluginTypeHolder
+    private sealed class PluginTypeHolder([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type, AssemblyLoadContext? context)
     {
-        public PluginTypeHolder([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
-        {
-            Type = type;
-        }
-
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        public Type Type { get; }
+        public Type Type { get; } = type;
+
+        public AssemblyLoadContext? Context { get; } = context;
     }
 }

@@ -1,4 +1,4 @@
-using Cordis;
+using Dsh.Runtime;
 
 namespace Dsh.Boot;
 
@@ -27,7 +27,7 @@ public static class PluginEntrypointRegistry
         lock (Gate)
         {
             if (!Registered.TryGetValue(name, out runner!))
-                throw new CordisException("UNKNOWN_ENTRYPOINT", $"unknown plugin entrypoint '{name}'");
+                throw new RuntimeException("UNKNOWN_ENTRYPOINT", $"unknown plugin entrypoint '{name}'");
         }
 
         return await runner(app, options, cancellationToken);

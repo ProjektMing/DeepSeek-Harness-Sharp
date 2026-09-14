@@ -1,5 +1,8 @@
+using System.Collections;
+using System.Globalization;
+using System.Reflection;
 using System.Runtime.Loader;
-using Cordis;
+using Dsh.Runtime;
 
 namespace Dsh.Boot;
 
@@ -18,28 +21,24 @@ public static class BootCli
         }
         using var app = await ComposeAppAsync(home, config, patches);
         using var autoApprove = InvokeStaticDisposable("Dsh.Interaction.ApprovalAnswerers", "Dsh.Interaction", "AutoApprove", app.Ctx);
-        dynamic agents = app.Ctx.Get("agents")!;
-        dynamic agentOptions = Activator.CreateInstance(RequireType("Dsh.Core.AgentOptions", "Dsh.Core"), app.Provider, app.Model, null, null)!;
-        dynamic createOptions = Activator.CreateInstance(
+        var agents = app.Ctx.Get("agents")!;
+        var agentOptions = Activator.CreateInstance(RequireType("Dsh.Core.AgentOptions", "Dsh.Core"), app.Provider, app.Model, null, null)!;
+        var createOptions = Activator.CreateInstance(
             RequireType("Dsh.Core.CreateAgentOptions", "Dsh.Core"),
-            null, Directory.GetCurrentDirectory(), agentOptions, null, null, null, null)!;
-        dynamic handle = await agents.Create(createOptions);
-        dynamic agent = handle.Agent;
-        await agent.WhenIdle();
-        long firstSeq = (long)agent.Session.Seq;
-        using var reasoning = StreamReasoning(app.Ctx, agent);
-        dynamic message = RequireType("Dsh.Llm.MessageFactory", "Dsh.Llm")
-            .GetMethod("CreateUserText", [typeof(string)])!
-            .Invoke(null, [task])!;
-        agent.Followup(message);
-        await agent.WhenIdle();
-        dynamic sessions = app.Ctx.Get("sessions")!;
-        await sessions.Flush(agent.Session);
+            [null, Directory.GetCurrentDirectory(), agentOptions, null, null, null, null])!;
+        var handle = await AwaitAsync(InvokeMethod(agents, "Create", createOptions));
+        var agent = RequireProp(handle, "Agent");
+        await AwaitAsync(InvokeMethod(agent, "WhenIdle"));
+        var session = RequireProp(agent, "Session");
+        var firstSeq = SeqOf(session);
+        using var reasoning = StreamReasoning(app.Ctx, session);
+        var message = InvokeStatic(RequireType("Dsh.Llm.MessageFactory", "Dsh.Llm"), "CreateUserText", task)!;
+        InvokeMethod(agent, "Followup", message);
+        await AwaitAsync(InvokeMethod(agent, "WhenIdle"));
+        var sessions = app.Ctx.Get("sessions")!;
+        await AwaitAsync(InvokeMethod(sessions, "Flush", session));
 
-        var summary = Summarize((object)agent.Session, firstSeq);
-        var text = summary.Text;
-        var reasonKind = summary.ReasonKind;
-        var errorMessage = summary.ErrorMessage;
+        var (text, reasonKind, errorMessage) = Summarize(session, firstSeq);
         Console.Out.WriteLine(text);
         if (reasonKind == "error")
         {
@@ -56,9 +55,9 @@ public static class BootCli
     {
         using var app = await ComposeAppAsync(home, config, patches);
         var transportType = RequireType("Dsh.Sdk.JsonRpcLineTransport", "Dsh.Sdk");
-        dynamic transport = Activator.CreateInstance(transportType, Console.In, Console.Out)!;
+        var transport = Activator.CreateInstance(transportType, Console.In, Console.Out)!;
         var serverType = RequireType("Dsh.Sdk.HarnessSdkServer", "Dsh.Sdk");
-        var server = Activator.CreateInstance(serverType, app.Ctx, (object)transport)!;
+        var server = Activator.CreateInstance(serverType, app.Ctx, transport)!;
         var handlerType = transportType.Assembly.GetType("Dsh.Sdk.JsonRpcRequestHandler")!;
         transportType.GetProperty("RequestHandler")!.SetValue(transport,
             Delegate.CreateDelegate(handlerType, server, serverType.GetMethod("HandleRequestAsync")!));
@@ -74,16 +73,18 @@ public static class BootCli
         try
         {
             var clientType = RequireType("Dsh.Pty.PtyDaemonClient", "Dsh.Pty");
-            var task = (Task)clientType.GetMethod("ListAsync", [typeof(CancellationToken)])!.Invoke(null, [CancellationToken.None])!;
+            var task = (Task)InvokeStatic(clientType, "ListAsync", CancellationToken.None)!;
             await task;
-            dynamic sessions = task.GetType().GetProperty("Result")!.GetValue(task)!;
-            if (sessions.Count == 0)
+            var sessions = task.GetType().GetProperty("Result")!.GetValue(task)!;
+            var printed = 0;
+            foreach (var session in (IEnumerable)sessions)
             {
-                Console.WriteLine("no PTY sessions");
-                return 0;
+                var startedAt = (DateTimeOffset)RequireProp(session, "StartedAt");
+                Console.WriteLine($"{RequireProp(session, "Id")}\t{RequireProp(session, "Command")}\t{startedAt:O}\t{RequireProp(session, "Status")}");
+                printed++;
             }
-            foreach (dynamic session in sessions)
-                Console.WriteLine($"{session.Id}\t{session.Command}\t{session.StartedAt:O}\t{session.Status}");
+            if (printed == 0)
+                Console.WriteLine("no PTY sessions");
             return 0;
         }
         catch (Exception error) when (IsPtyDaemonNotRunning(error))
@@ -103,8 +104,7 @@ public static class BootCli
         try
         {
             var clientType = RequireType("Dsh.Pty.PtyDaemonClient", "Dsh.Pty");
-            var method = clientType.GetMethod("AttachAsync", [typeof(string), typeof(Stream), typeof(Stream), typeof(CancellationToken)])!;
-            await (Task)method.Invoke(null, [id, Console.OpenStandardInput(), Console.OpenStandardOutput(), CancellationToken.None])!;
+            await (Task)InvokeStatic(clientType, "AttachAsync", id, Console.OpenStandardInput(), Console.OpenStandardOutput(), CancellationToken.None)!;
             return 0;
         }
         catch (Exception error) when (IsPtyDaemonNotRunning(error))
@@ -123,8 +123,7 @@ public static class BootCli
     {
         var daemonType = RequireType("Dsh.Pty.PtyDaemon", "Dsh.Pty");
         await using var daemon = (IAsyncDisposable)Activator.CreateInstance(daemonType, [null, null, null])!;
-        dynamic daemonDynamic = daemon;
-        await daemonDynamic.StartAsync();
+        await (Task)InvokeMethod(daemon, "StartAsync")!;
         var shutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
         {
@@ -156,11 +155,11 @@ public static class BootCli
 
     private static IDisposable InvokeStaticDisposable(string typeName, string assemblyName, string methodName, Context ctx)
     {
-        var method = RequireType(typeName, assemblyName).GetMethod(methodName, [typeof(Context)])!;
-        return (IDisposable)method.Invoke(null, [ctx])!;
+        var type = RequireType(typeName, assemblyName);
+        return (IDisposable)InvokeStatic(type, methodName, ctx)!;
     }
 
-    private static IDisposable StreamReasoning(Context ctx, dynamic agent)
+    private static IDisposable StreamReasoning(Context ctx, object session)
     {
         var started = false;
         var open = false;
@@ -178,11 +177,11 @@ public static class BootCli
 
         EventListener handler = (_, args) =>
         {
-            dynamic session = args[0]!;
-            if (!ReferenceEquals(session, agent.Session))
+            if (args[0] is null || !ReferenceEquals(args[0], session))
                 return new ValueTask<object?>();
-            dynamic sessionEvent = args[1]!;
-            var data = sessionEvent.Data;
+            var data = Prop(args[1]!, "Data");
+            if (data is null)
+                return new ValueTask<object?>();
             var typeName = data.GetType().Name;
             if (typeName == "TurnStartPayload")
             {
@@ -192,18 +191,20 @@ public static class BootCli
             }
             if (!started || typeName != "AssistantChunkPayload")
                 return new ValueTask<object?>();
-            dynamic chunkPayload = data;
-            var chunk = chunkPayload.Chunk;
+            var chunk = Prop(data, "Chunk");
+            if (chunk is null)
+                return new ValueTask<object?>();
             var chunkTypeName = chunk.GetType().Name;
-            if (chunkTypeName == "StreamChunk+ReasoningDelta" && chunk.Text.Length > 0)
+            var text = Prop(chunk, "Text") as string;
+            if (chunkTypeName == "StreamChunk+ReasoningDelta" && text is { Length: > 0 })
             {
                 if (!open)
                 {
                     Console.Error.Write("dsh: reasoning:\n");
                     open = true;
                 }
-                Console.Error.Write((string)chunk.Text);
-                endsWithNewline = ((string)chunk.Text).EndsWith('\n');
+                Console.Error.Write(text);
+                endsWithNewline = text.EndsWith('\n');
             }
             else if (chunkTypeName is not ("StreamChunk+BlockStart" or "StreamChunk+BlockEnd" or "StreamChunk+Usage"))
             {
@@ -219,18 +220,20 @@ public static class BootCli
         });
     }
 
-    private static (string Text, string ReasonKind, string? ErrorMessage) Summarize(dynamic session, long firstSeq)
+    private static (string Text, string ReasonKind, string? ErrorMessage) Summarize(object session, long firstSeq)
     {
         var started = false;
         var text = "";
         string reasonKind = "";
         string? errorMessage = null;
-        for (var seq = firstSeq; seq < (long)session.Seq; seq++)
+        for (var seq = firstSeq; seq < SeqOf(session); seq++)
         {
-            dynamic sessionEvent = session.EventAt(seq);
+            var sessionEvent = InvokeMethod(session, "EventAt", seq);
             if (sessionEvent is null)
-                throw new InvalidOperationException($"headless summary cannot read seq {seq} below captured length {session.Seq}");
-            dynamic data = sessionEvent.Data;
+                throw new InvalidOperationException($"headless summary cannot read seq {seq} below captured length {SeqOf(session)}");
+            var data = Prop(sessionEvent, "Data");
+            if (data is null)
+                continue;
             var typeName = data.GetType().Name;
             switch (typeName)
             {
@@ -239,22 +242,141 @@ public static class BootCli
                     break;
                 case "AssistantMessagePayload" when started:
                 {
-                    dynamic message = data.Message;
-                    var joined = string.Concat(((IEnumerable<object>)message.Content)
+                    var message = Prop(data, "Message");
+                    if (message is null)
+                        break;
+                    var joined = string.Concat(((IEnumerable)(Prop(message, "Content") ?? Array.Empty<object>()))
+                        .Cast<object>()
                         .Where(block => block.GetType().Name == "TextBlock")
-                        .Select(block => (string)((dynamic)block).Text));
+                        .Select(block => Prop(block, "Text") as string ?? ""));
                     if (joined != "")
                         text = joined;
                     break;
                 }
                 case "TurnEndPayload":
-                    reasonKind = (string)data.Reason.Kind;
-                    if (reasonKind == "error")
-                        errorMessage = (string)data.Reason.Failure.Message;
+                    var reason = Prop(data, "Reason");
+                    if (reason is null)
+                        break;
+                    reasonKind = Prop(reason, "Kind") as string ?? "";
+                    if (reasonKind == "error" && Prop(reason, "Failure") is { } failure)
+                        errorMessage = Prop(failure, "Message") as string;
                     break;
             }
         }
         return (text, reasonKind, errorMessage);
+    }
+
+    private static long SeqOf(object session) => Convert.ToInt64(Prop(session, "Seq") ?? 0L, CultureInfo.InvariantCulture);
+
+    private static object? Prop(object target, string name)
+    {
+        var type = target.GetType();
+        if (type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance) is { } property)
+            return property.GetValue(target);
+        if (type.GetField(name, BindingFlags.Public | BindingFlags.Instance) is { } field)
+            return field.GetValue(target);
+        return null;
+    }
+
+    private static object RequireProp(object? target, string name)
+        => target is null
+            ? throw new RuntimeException("SURFACE_NOT_FOUND", $"cannot read property \"{name}\" from a null value")
+            : Prop(target, name) ?? throw new RuntimeException("SURFACE_NOT_FOUND", $"{target.GetType().FullName} has no property \"{name}\"");
+
+    private static object? InvokeMethod(object target, string name, params object?[] args)
+    {
+        var (method, converted) = RequireMethod(target.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance), name, args, target.GetType().FullName ?? target.GetType().Name);
+        return method.Invoke(target, converted);
+    }
+
+    private static object? InvokeStatic(Type type, string name, params object?[] args)
+    {
+        var (method, converted) = RequireMethod(type.GetMethods(BindingFlags.Public | BindingFlags.Static), name, args, type.FullName ?? type.Name);
+        return method.Invoke(null, converted);
+    }
+
+    private static (MethodInfo Method, object?[] Args) RequireMethod(IEnumerable<MethodInfo> candidates, string name, object?[] args, string owner)
+    {
+        var seen = new List<string>();
+        foreach (var method in candidates)
+        {
+            if (method.Name != name)
+                continue;
+            var parameters = method.GetParameters();
+            if (parameters.Length < args.Length)
+                continue;
+            if (parameters.Skip(args.Length).Any(parameter => !parameter.IsOptional))
+                continue;
+            var converted = new object?[parameters.Length];
+            for (var index = args.Length; index < parameters.Length; index++)
+                converted[index] = Type.Missing;
+            var match = true;
+            for (var index = 0; index < args.Length; index++)
+            {
+                var argument = args[index];
+                var parameterType = parameters[index].ParameterType;
+                if (argument is null)
+                {
+                    if (parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) is null)
+                    {
+                        match = false;
+                        break;
+                    }
+                    continue;
+                }
+                if (parameterType.IsInstanceOfType(argument))
+                {
+                    converted[index] = argument;
+                    continue;
+                }
+                if (Nullable.GetUnderlyingType(parameterType) is { } underlying && underlying.IsInstanceOfType(argument))
+                {
+                    converted[index] = argument;
+                    continue;
+                }
+                if (parameterType.IsPrimitive && argument is IConvertible)
+                {
+                    converted[index] = Convert.ChangeType(argument, parameterType, CultureInfo.InvariantCulture);
+                    continue;
+                }
+                match = false;
+                break;
+            }
+            if (match)
+                return (method, converted);
+            seen.Add($"{method.Name}({string.Join(", ", parameters.Select(parameter => parameter.ParameterType.Name))})");
+        }
+        throw new RuntimeException("SURFACE_NOT_FOUND",
+            $"no method {name}({string.Join(", ", args.Select(argument => argument?.GetType().Name ?? "null"))}) on {owner}"
+            + (seen.Count > 0 ? $"; candidates: {string.Join("; ", seen)}" : ""));
+    }
+
+    private static async Task<object?> AwaitAsync(object? awaitable)
+    {
+        switch (awaitable)
+        {
+            case null:
+                return null;
+            case Task task:
+                await task;
+                return task.GetType().IsGenericType
+                    ? task.GetType().GetProperty("Result")!.GetValue(task)
+                    : null;
+            case ValueTask valueTask:
+                await valueTask;
+                return null;
+            default:
+            {
+                var asTask = awaitable.GetType().GetMethod("AsTask", Type.EmptyTypes);
+                if (asTask is null)
+                    return awaitable;
+                var task = (Task)asTask.Invoke(awaitable, null)!;
+                await task;
+                return task.GetType().IsGenericType
+                    ? task.GetType().GetProperty("Result")!.GetValue(task)
+                    : null;
+            }
+        }
     }
 
     private static bool IsPtyDaemonNotRunning(Exception? error)
@@ -289,7 +411,7 @@ public static class BootCli
         }
         type ??= AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(typeName)).FirstOrDefault(candidate => candidate is not null);
         if (type is null)
-            throw new CordisException("SURFACE_NOT_FOUND", $"surface assembly \"{assemblyName}\" is not available: {typeName}");
+            throw new RuntimeException("SURFACE_NOT_FOUND", $"surface assembly \"{assemblyName}\" is not available: {typeName}");
         return type;
     }
 

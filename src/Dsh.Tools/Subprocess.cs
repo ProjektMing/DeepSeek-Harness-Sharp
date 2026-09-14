@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
-using Cordis;
+using Dsh.Runtime;
 
 namespace Dsh.Tools;
 

@@ -1,5 +1,4 @@
-using Cordis;
-using Cordis.Loader;
+using Dsh.Runtime;
 using Dsh.Plugins;
 
 [assembly: DshPlugin("test/local")]
@@ -23,23 +22,19 @@ public sealed class PluginHostTests
     }
 
     [Fact]
-    public async Task ScanDirectory_RegistersBuiltinAndApplies()
+    public async Task ScanDirectory_RegistersDefinitionAndActivates()
     {
         TestPlugin.Applied = false;
         var host = new PluginHost();
         host.ScanDirectory(AppContext.BaseDirectory);
 
-        Assert.True(host.Catalog.TryCreate("test/local", out _));
+        Assert.True(host.Catalog.TryCreateDefinition("test/local", out var definition));
 
         var ctx = new Context();
-        var loader = new Loader(ctx);
-        host.RegisterBuiltins(loader);
-
-        Assert.True(loader.Builtins.TryGetValue("test/local", out var definition));
-        var pluginDefinition = Assert.IsType<PluginDefinition>(definition);
-        var fiber = ctx.Plugin(pluginDefinition);
-        await fiber.Await();
+        var activation = ctx.Plugin(definition!);
+        await activation.WaitAsync();
         Assert.True(TestPlugin.Applied);
+        Assert.Equal(ActivationState.Active, activation.State);
     }
 }
 

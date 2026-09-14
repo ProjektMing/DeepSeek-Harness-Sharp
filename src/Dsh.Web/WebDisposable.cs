@@ -9,7 +9,7 @@ internal sealed class WebDisposable(params IDisposable?[] disposables) : IDispos
     }
 }
 
-internal sealed class EffectHandleDisposable(Cordis.EffectHandle handle) : IDisposable
+internal sealed class EffectHandleDisposable(Dsh.Runtime.EffectHandle handle) : IDisposable
 {
     public void Dispose() => handle.Dispose();
 }

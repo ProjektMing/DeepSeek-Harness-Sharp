@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Cordis;
+using Dsh.Runtime;
 using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Llm;
@@ -53,22 +53,13 @@ public class ConfigBootTests
                   config:
                     allowParallelInProgress: true
 
-                - id: fs-local-root
+                - id: fs-local
                   name: '@deepseek-ai/dsh-fs-local'
 
-                - id: bootstrap-filesystem
-                  name: cordis:group
-                  group: true
-                  isolate:
-                    fs: true
+                - id: str-replace-editor
+                  name: '@deepseek-ai/dsh-tool-str-replace-editor'
                   config:
-                    - id: fs-local
-                      name: '@deepseek-ai/dsh-fs-local'
-
-                    - id: str-replace-editor
-                      name: '@deepseek-ai/dsh-tool-str-replace-editor'
-                      config:
-                        maxOutputChars: 16000
+                    maxOutputChars: 16000
                 """);
 
             var home = HarnessHome.Resolve(Path.Combine(dir, "home"));

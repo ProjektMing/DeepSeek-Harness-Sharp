@@ -1,5 +1,4 @@
 using System.Runtime.Loader;
-using Cordis.Loader;
 
 namespace Dsh.Plugins;
 
@@ -32,8 +31,7 @@ public sealed class PluginHost
                     continue;
                 }
             }
-            if (assembly is not null)
-                Catalog.RegisterAssembly(assembly);
+            Catalog.RegisterAssembly(assembly);
         }
 
         RegisterGeneratedCatalog();
@@ -43,13 +41,5 @@ public sealed class PluginHost
     {
         foreach (var entry in DshPluginCatalogRegistry.Snapshot())
             Catalog.RegisterPlugin(entry.Package, entry.Implementation);
-    }
-
-    public void RegisterBuiltins(Loader loader)
-    {
-        foreach (var packageName in Catalog.PackageNames)
-        {
-            loader.Builtins[packageName] = Catalog.CreateDefinition(packageName);
-        }
     }
 }

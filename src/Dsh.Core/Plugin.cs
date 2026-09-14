@@ -1,4 +1,4 @@
-using Cordis;
+using Dsh.Runtime;
 using Dsh.Plugins;
 
 [assembly: DshPlugin(Dsh.Core.Plugin.Core)]

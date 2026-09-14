@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Dsh.Boot;
+using Dsh.Runtime;
 using Dsh.Boot.Profiles;
 
 namespace DeepSeek_Harness_Sharp;
@@ -103,7 +104,7 @@ public static class Program
         {
             patches = patch is null ? null : ConfigBoot.LoadPatches(patch);
         }
-        catch (Cordis.CordisException error)
+        catch (RuntimeException error)
         {
             Console.Error.WriteLine($"dsh: {error.Message}");
             return 1;

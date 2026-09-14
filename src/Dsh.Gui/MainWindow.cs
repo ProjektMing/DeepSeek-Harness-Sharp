@@ -4,7 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Cordis;
+using Dsh.Runtime;
 using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Interaction;

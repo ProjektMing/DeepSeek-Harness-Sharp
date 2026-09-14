@@ -1,4 +1,4 @@
-using Cordis;
+using Dsh.Runtime;
 
 namespace Dsh.Core;
 
@@ -50,7 +50,7 @@ public static class DshScope
     {
         if (scope is null)
             return ctx;
-        return ctx.Extend((Symbols.Filter, (Func<Context, bool>)(hookCtx => IsInScope(hookCtx, scope))));
+        return ctx.WithFilter(hookCtx => IsInScope(hookCtx, scope));
     }
 }
 

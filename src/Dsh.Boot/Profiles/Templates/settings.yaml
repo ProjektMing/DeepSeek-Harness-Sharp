@@ -58,6 +58,12 @@ compaction:
   auto: true
   prune: true
 
+# 快照恢复点(shadow git,默认关闭)
+checkpoints:
+  enabled: false
+  max_points: 256
+  keep_days: 15
+
 # 安全设置
 safety:
   autoApprove: false

@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Cordis;
+using Dsh.Runtime;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;

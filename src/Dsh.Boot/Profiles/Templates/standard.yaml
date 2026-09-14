@@ -20,3 +20,5 @@
 - name: "@deepseek-ai/dsh-command-compact"
 - name: "@deepseek-ai/dsh-jobs-local"
 - name: "@deepseek-ai/dsh-tool-jobs"
+- name: "@deepseek-ai/dsh-checkpoints"
+- name: "@deepseek-ai/dsh-ide-history"

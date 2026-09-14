@@ -1,4 +1,4 @@
-using Cordis;
+using Dsh.Runtime;
 
 namespace Dsh.Skills;
 
