@@ -74,7 +74,7 @@ public class ToolExecutionInput
     public object? Parent { get; init; }
     public required CancellationToken Signal { get; init; }
 
-    // cordis Node 桥按名字大小写敏感地解析成员,JS 插件以 camelCase 访问以下投影。
+    // 以下投影由 dsh/service.call 桥按名字字符串访问(匹配不区分大小写)。
     public string name => Name;
     public JsonNode? arguments => Arguments.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
         ? null

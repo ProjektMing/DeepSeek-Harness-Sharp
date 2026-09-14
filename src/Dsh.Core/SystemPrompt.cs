@@ -54,7 +54,6 @@ public static class PromptOrders
     public const int ToolLsp = 2200;
     public const int ToolSessionQuery = 2300;
     public const int ToolGoal = 2400;
-    public const int ToolCordis = 2500;
     public const int ToolWorkflow = 2600;
     public const int ToolRalph = 2700;
     public const int ToolSubagent = 2800;
@@ -81,8 +80,6 @@ public sealed class SystemPrompt : Service
     public const string ServiceName = "systemPrompt";
     public const string PersonaSection = "deployment:persona";
     public const string ToolOrderRest = "<unlisted-tools>";
-    public const string AssembleEvent = "system-prompt/assemble";
-    public const string ChangeEvent = "system-prompt/change";
 
     private sealed class PromptLayer
     {
@@ -111,7 +108,7 @@ public sealed class SystemPrompt : Service
 
     public SystemPrompt(Context ctx, SystemPromptConfig config) : base(ctx, ServiceName)
     {
-        _layers = new ScopedLayers<PromptLayer>(scope => new PromptLayer(scope), () => ctx.Emit(ChangeEvent));
+        _layers = new ScopedLayers<PromptLayer>(scope => new PromptLayer(scope), () => ctx.Emit(new SystemPromptChangeNotification()));
         _toolOrder = ValidateToolOrder(config.ToolOrder);
         if (config.IncludeHarnessIdentity)
         {
@@ -233,8 +230,7 @@ public sealed class SystemPrompt : Service
             variables);
         var transformed = await Ctx.Events.Waterfall(
             DshScope.ScopeTarget(Ctx, scope),
-            AssembleEvent,
-            [assembly, context],
+            new SystemPromptAssembleNotification(assembly, context),
             () => new ValueTask<object?>(assembly)) as PromptAssembly ?? assembly;
         if (completeSection is null && !runtimeContextSuppressed)
             return transformed;

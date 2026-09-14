@@ -2,7 +2,7 @@ namespace Dsh.Runtime;
 
 public sealed class EffectHandle
 {
-    private readonly Func<Task> _dispose;
+    private Func<Task>? _dispose;
     private bool _active = true;
 
     public string Label { get; }
@@ -18,7 +18,10 @@ public sealed class EffectHandle
     {
         if (!_active) return;
         _active = false;
-        await _dispose();
+        var dispose = _dispose;
+        _dispose = null;
+        if (dispose is not null)
+            await dispose();
     }
 
     public void Dispose() => _ = Observe(DisposeAsync());
@@ -81,14 +84,29 @@ internal sealed class EffectScope
                 return Task.CompletedTask;
             }),
             Func<Task> asyncDispose => new EffectHandle(label, asyncDispose),
-            IDisposable disposable => new EffectHandle(label, () =>
-            {
-                disposable.Dispose();
-                return Task.CompletedTask;
-            }),
+            IDisposable disposable => new EffectHandle(label, new RawDisposable(disposable).DisposeAsync),
             IEnumerable<object?> items => new EffectHandle(label, () => DisposeMany(items, label)),
             _ => throw new RuntimeException("INVALID_EFFECT", $"invalid effect result from {label}: {result.GetType().Name}"),
         };
+    }
+
+    /** 包一层宿主类型:Dispose 时立即丢弃对插件对象的引用,避免协作式卸载时插件程序集被滞后引用。 */
+    private sealed class RawDisposable(IDisposable target) : IDisposable
+    {
+        private IDisposable? _target = target;
+
+        public void Dispose()
+        {
+            var current = _target;
+            _target = null;
+            current?.Dispose();
+        }
+
+        public Task DisposeAsync()
+        {
+            Dispose();
+            return Task.CompletedTask;
+        }
     }
 
     private static async Task DisposeMany(IEnumerable<object?> items, string label)

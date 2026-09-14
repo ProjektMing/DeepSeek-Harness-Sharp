@@ -1,4 +1,5 @@
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -42,7 +43,6 @@ public sealed class UserQuestionException(string message, string code, Exception
 public sealed class UserQuestionService(Context ctx) : Service(ctx, ServiceName)
 {
     public const string ServiceName = "userQuestions";
-    public const string RequestEvent = "user-questions/request";
 
     public static UserQuestionService Register(Context ctx) => new(ctx);
 
@@ -59,7 +59,7 @@ public sealed class UserQuestionService(Context ctx) : Service(ctx, ServiceName)
         {
             var carrier = request.Agent is { } agent ? DshScope.ScopeTarget(Ctx, agent.ScopeKey) : Ctx;
             var result = await Ctx.Events.Waterfall(
-                carrier, RequestEvent, [request],
+                carrier, new UserQuestionsRequestNotification(request),
                 static () => throw new UserQuestionException(
                     "no user-questions answerer accepted the request", UserQuestionException.NoProvider));
             return result as AskUserQuestionAnswer
@@ -122,17 +122,16 @@ public static class UserQuestionAnswerers
     // Headless stance: each question resolves to its first option when it declares options, otherwise an empty selection.
     public static IDisposable Headless(Context ctx)
     {
-        var remove = ctx.On(
-            UserQuestionService.RequestEvent,
-            (_, args) =>
+        var remove = ctx.OnWaterfall<UserQuestionsRequestNotification>(
+            (notification, _) =>
             {
-                var request = (AskUserQuestionRequest)args[0]!;
+                var request = notification.Request;
                 var answers = request.Questions
                     .Select(question => new AskUserQuestionAnswerItem(
                         question.Id,
                         question.Options is { Count: > 0 } options ? [options[0].Label] : []))
                     .ToList();
-                return new ValueTask<object?>(new AskUserQuestionAnswer(answers));
+                return ValueTask.FromResult<object?>(new AskUserQuestionAnswer(answers));
             },
             new EventOptions { Global = true });
         return new DisposeAction(() => remove());

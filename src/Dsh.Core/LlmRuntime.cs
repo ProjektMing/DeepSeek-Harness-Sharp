@@ -30,8 +30,6 @@ public sealed class AdapterRegistrationHandle : IDisposable
 public sealed class LlmRuntime : Service
 {
     public const string ServiceName = "llm";
-    public const string StreamEvent = "llm/stream";
-    public const string AdaptersUpdatedEvent = "llm/adapters-updated";
 
     private sealed record Registration(LlmAdapter Adapter, LlmProviderInfo Provider, ResolvedRetryPolicy RetryPolicy);
 
@@ -49,19 +47,19 @@ public sealed class LlmRuntime : Service
                 throw new InvalidOperationException($"provider \"{provider}\" already has a registered adapter");
             _adapters[provider] = new Registration(adapter, adapter.ProviderInfo, adapter.ProviderRetryPolicy);
         }
-        Ctx.Emit(AdaptersUpdatedEvent);
+        Ctx.Emit(new LlmAdaptersUpdatedNotification());
         return new AdapterRegistrationHandle(() =>
         {
             foreach (var provider in providers)
                 _adapters.Remove(provider);
-            Ctx.Emit(AdaptersUpdatedEvent);
+            Ctx.Emit(new LlmAdaptersUpdatedNotification());
         });
     }
 
     public void UnregisterAdapter(string provider)
     {
         if (_adapters.Remove(provider))
-            Ctx.Emit(AdaptersUpdatedEvent);
+            Ctx.Emit(new LlmAdaptersUpdatedNotification());
     }
 
     public IReadOnlyList<LlmProviderInfo> ListProviders()
@@ -148,7 +146,7 @@ public sealed class LlmRuntime : Service
         Registration? registration,
         PreparedAdapterCall? adapterCall)
     {
-        var result = await Ctx.Events.Waterfall(Ctx, StreamEvent, [options],
+        var result = await Ctx.Events.Waterfall(Ctx, new LlmStreamNotification(options),
             () => new ValueTask<object?>(AdapterStream(options, registration, adapterCall)));
         if (result is not IAsyncEnumerable<StreamChunk> stream)
             throw new LlmException(new LlmFailure("llm/stream waterfall returned no stream", "INVALID_STREAM"));

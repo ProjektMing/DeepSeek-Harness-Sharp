@@ -197,16 +197,16 @@ public static class WebSearchTool
 
     private static IReadOnlyList<ContentBlock> Render(JsonElement value)
     {
-        var result = value.Deserialize<WebSearchResultValue>(DshJson.Options)
+            var result = DshJson.Deserialize<WebSearchResultValue>(value)
             ?? throw new JsonException("web_search result value is malformed");
         return [new TextBlock(FormatSearchOutput(result))];
     }
 
     private static JsonElement SearchMetaElement(JsonElement value)
     {
-        var result = value.Deserialize<WebSearchResultValue>(DshJson.Options)
+            var result = DshJson.Deserialize<WebSearchResultValue>(value)
             ?? throw new JsonException("web_search result value is malformed");
-        return JsonSerializer.SerializeToElement(SearchMetaFromValue(result), DshJson.Options);
+        return DshJson.ToElement(SearchMetaFromValue(result));
     }
 
     private static Task<object?> Execute(JsonElement args, ToolRunContext exec, Context ctx, int maxResults, int maxQueries)

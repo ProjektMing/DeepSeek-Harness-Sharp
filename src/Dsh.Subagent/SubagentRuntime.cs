@@ -7,10 +7,6 @@ namespace Dsh.Subagent;
 public sealed partial class SubagentRuntime : Service
 {
     public const string ServiceName = "subagents";
-    public const string ProviderAddedEvent = "subagent/provider-added";
-    public const string ProviderRemovedEvent = "subagent/provider-removed";
-    public const string StartEvent = "subagent/start";
-    public const string EndEvent = "subagent/end";
     public const string DelegationContextName = "subagent:delegation";
 
     private readonly Dictionary<string, ISubagentProvider> _providers = [];
@@ -39,13 +35,13 @@ public sealed partial class SubagentRuntime : Service
                 $"subagent provider \"{provider.Name}\" is already registered", SubagentErrorCodes.DuplicateProvider);
         }
         _providerNames.Add(provider.Name);
-        Ctx.Emit(ProviderAddedEvent, provider);
+        Ctx.Emit(new SubagentProviderAddedNotification(provider));
         return new DisposeAction(() =>
         {
             if (!_providers.Remove(provider.Name))
                 return;
             _providerNames.Remove(provider.Name);
-            Ctx.Emit(ProviderRemovedEvent, provider.Name);
+            Ctx.Emit(new SubagentProviderRemovedNotification(provider.Name));
         });
     }
 
@@ -114,7 +110,7 @@ public sealed partial class SubagentRuntime : Service
             Track(local);
         var observed = new ObservedRun(run, this);
         _ = ObserveEndAsync(info, observed, parent.ScopeKey);
-        EmitScoped(parent, StartEvent, info);
+        Ctx.Events.Emit(DshScope.ScopeTarget(Ctx, parent.ScopeKey), new SubagentStartNotification(info));
         return observed;
     }
 
@@ -134,11 +130,7 @@ public sealed partial class SubagentRuntime : Service
     private void EmitEnd(ScopeKey parentScope, SubagentRunInfo info, SubagentStopReason stopReason, IReadOnlyList<ContentBlock>? output)
         => Ctx.Events.Emit(
             DshScope.ScopeTarget(Ctx, parentScope),
-            EndEvent,
-            new SubagentRunEndInfo(info.RunId, info.Provider, info.Id, info.Local, stopReason, output));
-
-    private void EmitScoped(IAgent parent, string name, object payload)
-        => Ctx.Events.Emit(DshScope.ScopeTarget(Ctx, parent.ScopeKey), name, payload);
+            new SubagentEndNotification(new SubagentRunEndInfo(info.RunId, info.Provider, info.Id, info.Local, stopReason, output)));
 
     private void Track(IAgent child)
     {

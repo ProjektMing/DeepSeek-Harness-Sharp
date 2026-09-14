@@ -2,7 +2,6 @@ using Dsh.Runtime;
 using Dsh.Boot;
 using Dsh.Interaction;
 using Dsh.Plugins;
-using Dsh.Sdk;
 
 [assembly: DshPlugin("@deepseek-ai/dsh-acp")]
 
@@ -16,8 +15,6 @@ public sealed class Plugin : IDshPlugin
 
     public IDisposable Apply(Context ctx, object? config)
     {
-        PluginEntrypointRegistry.Register("acp",
-            static (app, _, cancellationToken) => RunAsync(app, cancellationToken));
         if (Console.IsInputRedirected)
             return new CallbackDisposable();
         var (provider, model) = ResolveDefaults(ctx);
@@ -26,48 +23,6 @@ public sealed class Plugin : IDshPlugin
         listener.Start();
         ctx.Root.SetOwn(EndpointKey, listener.Endpoint);
         return new CallbackDisposable(listener.Dispose);
-    }
-
-    private static async Task<int> RunAsync(HarnessApp app, CancellationToken cancellationToken)
-    {
-        if (!Console.IsInputRedirected)
-            return await RunSocketModeAsync(app, cancellationToken);
-        var transport = new JsonRpcLineTransport(Console.In, Console.Out);
-        var server = new AcpServer(app.Ctx, transport, app.Provider, app.Model, ApprovalAnswerers.AutoApproveScoped);
-        transport.RequestHandler = server.HandleRequestAsync;
-        transport.NotificationHandler = (method, parameters) =>
-        {
-            if (method == AcpMethods.Cancel)
-                server.Cancel(parameters);
-        };
-        transport.Start();
-        await transport.WhenClosedAsync().WaitAsync(cancellationToken);
-        await server.CloseAllAsync();
-        await transport.DisposeAsync();
-        return 0;
-    }
-
-    private static async Task<int> RunSocketModeAsync(HarnessApp app, CancellationToken cancellationToken)
-    {
-        var endpoint = app.Ctx.GetProp(EndpointKey) as string
-            ?? throw new InvalidOperationException("the ACP socket listener was not started");
-        await Console.Error.WriteLineAsync($"dsh: ACP listening on {endpoint}");
-        var shutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
-        {
-            eventArgs.Cancel = true;
-            shutdown.TrySetResult();
-        };
-        Console.CancelKeyPress += cancelHandler;
-        try
-        {
-            await shutdown.Task.WaitAsync(cancellationToken);
-        }
-        finally
-        {
-            Console.CancelKeyPress -= cancelHandler;
-        }
-        return 0;
     }
 
     private static (string? Provider, string? Model) ResolveDefaults(Context ctx)

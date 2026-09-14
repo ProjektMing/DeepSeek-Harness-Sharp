@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;
@@ -47,7 +48,7 @@ public sealed class PlanModeController : Service
     {
         var section = ResolveConfig(config ?? new PlanModeConfig()).Section;
 
-        ctx.On(AgentEventNames.PreStep, (_, args) => PreStep(args), new EventOptions { Global = true });
+        ctx.OnWaterfall<AgentPreStepNotification>(PreStep, new EventOptions { Global = true });
         ctx.Effect(() => (Action)(() => _disposed = true), $"{PluginName}: close service lifetime");
 
         var systemPrompt = ctx.Get<SystemPrompt>(SystemPrompt.ServiceName)
@@ -143,10 +144,9 @@ public sealed class PlanModeController : Service
         return "committed";
     }
 
-    private async ValueTask<object?> PreStep(object?[] args)
+    private async ValueTask<object?> PreStep(AgentPreStepNotification notification, Func<ValueTask<object?>> next)
     {
-        var payload = (PreStepPayload)args[0]!;
-        var next = (Func<ValueTask<object?>>)args[1]!;
+        var payload = notification.Payload;
         var decision = await next();
         if (decision is PreStepDecision.Reject || payload.Signal.IsCancellationRequested)
             return decision;

@@ -8,18 +8,14 @@ namespace Dsh.Boot;
 
 public static class BootCli
 {
-    public static async Task<int> RunHeadlessAsync(
-        HarnessHome home,
-        string task,
-        string? config,
-        IReadOnlyList<Dictionary<string, object?>>? patches)
+    public static async Task<int> RunHeadlessAsync(HarnessHome home, string task)
     {
         if (string.IsNullOrWhiteSpace(task))
         {
-            Console.Error.WriteLine("error: a task is required, for example: dsh --profile headless \"run the tests\"");
+            await Console.Error.WriteLineAsync("error: a task is required, for example: dsh headless \"run the tests\"");
             return 1;
         }
-        using var app = await ComposeAppAsync(home, config, patches);
+        using var app = await HarnessComposer.Compose(new HarnessOptions(home, Directory.GetCurrentDirectory()));
         using var autoApprove = InvokeStaticDisposable("Dsh.Interaction.ApprovalAnswerers", "Dsh.Interaction", "AutoApprove", app.Ctx);
         var agents = app.Ctx.Get("agents")!;
         var agentOptions = Activator.CreateInstance(RequireType("Dsh.Core.AgentOptions", "Dsh.Core"), app.Provider, app.Model, null, null)!;
@@ -48,31 +44,12 @@ public static class BootCli
         return reasonKind == "completed" ? 0 : 1;
     }
 
-    public static async Task<int> RunSdkAsync(
-        HarnessHome home,
-        string? config,
-        IReadOnlyList<Dictionary<string, object?>>? patches)
-    {
-        using var app = await ComposeAppAsync(home, config, patches);
-        var transportType = RequireType("Dsh.Sdk.JsonRpcLineTransport", "Dsh.Sdk");
-        var transport = Activator.CreateInstance(transportType, Console.In, Console.Out)!;
-        var serverType = RequireType("Dsh.Sdk.HarnessSdkServer", "Dsh.Sdk");
-        var server = Activator.CreateInstance(serverType, app.Ctx, transport)!;
-        var handlerType = transportType.Assembly.GetType("Dsh.Sdk.JsonRpcRequestHandler")!;
-        transportType.GetProperty("RequestHandler")!.SetValue(transport,
-            Delegate.CreateDelegate(handlerType, server, serverType.GetMethod("HandleRequestAsync")!));
-        transportType.GetMethod("Start")!.Invoke(transport, null);
-        await (Task)transportType.GetMethod("WhenClosedAsync")!.Invoke(transport, null)!;
-        if (transport is IAsyncDisposable disposable)
-            await disposable.DisposeAsync();
-        return 0;
-    }
-
     public static async Task<int> RunTuiListAsync()
     {
         try
         {
             var clientType = RequireType("Dsh.Pty.PtyDaemonClient", "Dsh.Pty");
+            await (Task)InvokeStatic(clientType, "EnsureRunningAsync", CancellationToken.None)!;
             var task = (Task)InvokeStatic(clientType, "ListAsync", CancellationToken.None)!;
             await task;
             var sessions = task.GetType().GetProperty("Result")!.GetValue(task)!;
@@ -104,6 +81,7 @@ public static class BootCli
         try
         {
             var clientType = RequireType("Dsh.Pty.PtyDaemonClient", "Dsh.Pty");
+            await (Task)InvokeStatic(clientType, "EnsureRunningAsync", CancellationToken.None)!;
             await (Task)InvokeStatic(clientType, "AttachAsync", id, Console.OpenStandardInput(), Console.OpenStandardOutput(), CancellationToken.None)!;
             return 0;
         }
@@ -142,17 +120,6 @@ public static class BootCli
         return 0;
     }
 
-    private static async Task<HarnessApp> ComposeAppAsync(
-        HarnessHome home,
-        string? config,
-        IReadOnlyList<Dictionary<string, object?>>? patches)
-    {
-        var options = new HarnessOptions(home, Directory.GetCurrentDirectory());
-        return config is null
-            ? await HarnessComposer.Compose(options)
-            : await ConfigBoot.Compose(config, options, patches: patches);
-    }
-
     private static IDisposable InvokeStaticDisposable(string typeName, string assemblyName, string methodName, Context ctx)
     {
         var type = RequireType(typeName, assemblyName);
@@ -175,25 +142,26 @@ public static class BootCli
             endsWithNewline = true;
         }
 
-        EventListener handler = (_, args) =>
+        Action<object> handler = notification =>
         {
-            if (args[0] is null || !ReferenceEquals(args[0], session))
-                return new ValueTask<object?>();
-            var data = Prop(args[1]!, "Data");
+            if (!ReferenceEquals(Prop(notification, "Session"), session))
+                return;
+            var sessionEvent = Prop(notification, "Event");
+            var data = sessionEvent is null ? null : Prop(sessionEvent, "Data");
             if (data is null)
-                return new ValueTask<object?>();
+                return;
             var typeName = data.GetType().Name;
             if (typeName == "TurnStartPayload")
             {
                 Close();
                 started = true;
-                return new ValueTask<object?>();
+                return;
             }
             if (!started || typeName != "AssistantChunkPayload")
-                return new ValueTask<object?>();
+                return;
             var chunk = Prop(data, "Chunk");
             if (chunk is null)
-                return new ValueTask<object?>();
+                return;
             var chunkTypeName = chunk.GetType().Name;
             var text = Prop(chunk, "Text") as string;
             if (chunkTypeName == "StreamChunk+ReasoningDelta" && text is { Length: > 0 })
@@ -210,9 +178,8 @@ public static class BootCli
             {
                 Close();
             }
-            return new ValueTask<object?>();
         };
-        var remove = ctx.On("session/event", handler, new EventOptions { Global = true });
+        var remove = SubscribeNotification(ctx, RequireType("Dsh.Core.SessionEventNotification", "Dsh.Core"), handler);
         return new CallbackDisposable(() =>
         {
             remove();
@@ -414,6 +381,13 @@ public static class BootCli
             throw new RuntimeException("SURFACE_NOT_FOUND", $"surface assembly \"{assemblyName}\" is not available: {typeName}");
         return type;
     }
+
+    private static Func<bool> SubscribeNotification(Context ctx, Type notificationType, Action<object> handler)
+        => ctx.On(notificationType, notification =>
+        {
+            handler(notification);
+            return ValueTask.CompletedTask;
+        }, new EventOptions { Global = true });
 
     private sealed class CallbackDisposable(Action dispose) : IDisposable
     {

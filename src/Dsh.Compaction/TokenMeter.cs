@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -59,12 +60,10 @@ public sealed class TokenMeter : Service, IDisposable
 
     public TokenMeter(Context ctx) : base(ctx, ServiceName)
     {
-        _listener = ctx.On(SessionStore.EventEvent, (thisArg, args) =>
+        _listener = ctx.On<SessionEventNotification>(notification =>
         {
-            var session = (Session)args[0]!;
-            if (_states.TryGetValue(session, out _))
-                Sync(session);
-            return new ValueTask<object?>();
+            if (_states.TryGetValue(notification.Session, out _))
+                Sync(notification.Session);
         }, new EventOptions { Global = true });
     }
 

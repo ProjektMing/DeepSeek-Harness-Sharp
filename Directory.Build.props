@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
     <SixLaborsLicenseFile>$(MSBuildThisFileDirectory)sixlabors.lic</SixLaborsLicenseFile>
+    <!-- JSON 源生成上下文以模块初始化自注册(库场景的预期用法),CA2255 不是问题。 -->
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
   </PropertyGroup>
 </Project>

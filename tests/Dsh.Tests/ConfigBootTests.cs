@@ -1,8 +1,6 @@
-using System.Text.Json;
-using Dsh.Runtime;
 using Dsh.Boot;
 using Dsh.Core;
-using Dsh.Llm;
+using Dsh.Runtime;
 using Dsh.Tools;
 
 namespace Dsh.Tests;
@@ -10,60 +8,34 @@ namespace Dsh.Tests;
 public class ConfigBootTests
 {
     [Fact]
-    public async Task Compose_ActivatesCSharpPlugins()
+    public async Task Compose_ActivatesConfiguredPluginsAndMergesDefaults()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"dsh-configboot-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
         HarnessApp? app = null;
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(dir, "test.cordis.yml"), """
-                - id: persona
-                  name: '@deepseek-ai/dsh-persona'
-                  config:
-                    text: You are a helpful software engineer assistant.
-                    complete: true
-                    includeRuntimeContext: false
-
-                - id: core
-                  name: '@deepseek-ai/dsh-core'
-
-                - id: interaction
-                  name: '@deepseek-ai/dsh-interaction'
-
-                - id: persistence
-                  name: '@deepseek-ai/dsh-persistence'
-
-                - id: subprocess
-                  name: '@deepseek-ai/dsh-subprocess'
-
-                - id: tool-bash
-                  name: '@deepseek-ai/dsh-tool-bash'
-
-                - id: tool-fs
-                  name: '@deepseek-ai/dsh-tool-fs'
-
-                - id: tool-fs-search
-                  name: '@deepseek-ai/dsh-tool-fs-search'
-                  config:
+            var home = HarnessHome.Resolve(Path.Combine(dir, "home"));
+            Directory.CreateDirectory(home.Root);
+            await File.WriteAllTextAsync(Path.Combine(home.Root, "settings.yaml"), """
+                global_default_model: deepseek-official/deepseek-v4-flash
+                plugins:
+                  "@deepseek-ai/dsh-core": true
+                  "@deepseek-ai/dsh-interaction": true
+                  "@deepseek-ai/dsh-persistence": true
+                  "@deepseek-ai/dsh-subprocess": true
+                  "@deepseek-ai/dsh-tool-bash": true
+                  "@deepseek-ai/dsh-tool-fs": true
+                  "@deepseek-ai/dsh-tool-fs-search":
                     sampleOverCapGlobResults: false
-
-                - id: tool-todo
-                  name: '@deepseek-ai/dsh-tool-todo'
-                  config:
+                  "@deepseek-ai/dsh-tool-todo":
                     allowParallelInProgress: true
-
-                - id: fs-local
-                  name: '@deepseek-ai/dsh-fs-local'
-
-                - id: str-replace-editor
-                  name: '@deepseek-ai/dsh-tool-str-replace-editor'
-                  config:
+                  "@deepseek-ai/dsh-fs-local": true
+                  "@deepseek-ai/dsh-tool-str-replace-editor":
                     maxOutputChars: 16000
                 """);
 
-            var home = HarnessHome.Resolve(Path.Combine(dir, "home"));
-            app = await ConfigBoot.Compose(Path.Combine(dir, "test.cordis.yml"), new HarnessOptions(home, Cwd: dir));
+            app = await ConfigBoot.Compose(new HarnessOptions(home, Cwd: dir));
 
             var tools = app.Ctx.Get<ToolRuntime>(ToolRuntime.ServiceName)!;
             var missing = new[] { "bash", "read", "write", "edit", "glob", "grep", "todo_write", "str_replace_editor" }
@@ -73,26 +45,47 @@ public class ConfigBootTests
 
             Assert.NotNull(app.Ctx.Get<LocalFsService>(LocalFsService.ServiceName));
 
-            var assembly = new Dictionary<string, object?>
+            // 用户 settings.yaml 未列出的插件由默认清单补齐
+            Assert.Equal(ActivationState.Active, app.Composition!.Find("@deepseek-ai/dsh-checkpoints")?.State);
+            Assert.Equal(ActivationState.Active, app.Composition.Find("@deepseek-ai/dsh-ide-history")?.State);
+
+            var fsSearch = app.Composition.Find("@deepseek-ai/dsh-tool-fs-search")!;
+            Assert.Equal(false, (fsSearch.Config as IDictionary<string, object?>)?["sampleOverCapGlobResults"]);
+        }
+        finally
+        {
+            app?.Dispose();
+            try
             {
-                ["system"] = "base prompt",
-                ["tools"] = tools.Schemas()
-                    .OrderBy(schema => schema.Name, StringComparer.Ordinal)
-                    .Select(schema => (object?)new Dictionary<string, object?>
-                    {
-                        ["name"] = schema.Name,
-                        ["description"] = schema.Description,
-                    }).ToList(),
-            };
-            var result = await app.Ctx.Events.Waterfall(null, SystemPrompt.AssembleEvent,
-                [assembly, new Dictionary<string, object?>()],
-                () => new ValueTask<object?>(assembly));
-            var filtered = Assert.IsType<Dictionary<string, object?>>(result);
-            var names = Assert.IsType<List<object?>>(filtered["tools"])
-                .Select(tool => Assert.IsType<Dictionary<string, object?>>(tool)["name"] as string)
-                .ToList();
-            Assert.Contains("bash", names);
-            Assert.Contains("str_replace_editor", names);
+                Directory.Delete(dir, true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Compose_SkipsDisabledPlugins()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"dsh-configboot-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        HarnessApp? app = null;
+        try
+        {
+            var home = HarnessHome.Resolve(Path.Combine(dir, "home"));
+            Directory.CreateDirectory(home.Root);
+            await File.WriteAllTextAsync(Path.Combine(home.Root, "settings.yaml"), """
+                plugins:
+                  "@deepseek-ai/dsh-tool-todo": false
+                """);
+
+            app = await ConfigBoot.Compose(new HarnessOptions(home, Cwd: dir));
+
+            Assert.Null(app.Composition!.Find("@deepseek-ai/dsh-tool-todo"));
+            var tools = app.Ctx.Get<ToolRuntime>(ToolRuntime.ServiceName)!;
+            Assert.Null(tools.Get("todo_write"));
+            Assert.NotNull(tools.Get("bash"));
         }
         finally
         {

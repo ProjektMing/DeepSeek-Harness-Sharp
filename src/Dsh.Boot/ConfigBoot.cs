@@ -1,91 +1,49 @@
 using Dsh.Runtime;
-using Dsh.Boot.Profiles;
 using Dsh.Runtime.Composition;
+using Dsh.Runtime.Logging;
 using Dsh.Plugins;
+using System.Runtime.CompilerServices;
 
 namespace Dsh.Boot;
 
 public static class ConfigBoot
 {
-    public static async Task<HarnessApp> ComposeProfile(
-        string profileName,
-        IReadOnlyList<Dictionary<string, object?>>? patches,
-        HarnessOptions options)
-    {
-        var (configPath, combinedPatches) = PrepareProfile(options.Home, profileName, patches);
-        return await Compose(configPath, options, combinedPatches);
-    }
-
-    private static string ProfileConfigTemplate(string profileName)
-    {
-        var templateName = profileName is "sdk-minimal" or "sdk" ? "minimal" : "standard";
-        var path = Path.Combine(AppContext.BaseDirectory, "Profiles", "Templates", $"{templateName}.yaml");
-        var template = File.Exists(path) ? File.ReadAllText(path) : "[]\n";
-        var entrypoint = profileName switch
-        {
-            "tui" => "@deepseek-ai/dsh-tui",
-            "gui" => "@deepseek-ai/dsh-gui",
-            "web" => "@deepseek-ai/dsh-web",
-            "acp" => "@deepseek-ai/dsh-acp",
-            "lsp" => "@deepseek-ai/dsh-lsp",
-            _ => null,
-        };
-        if (entrypoint is not null && !template.Contains(entrypoint, StringComparison.Ordinal))
-        {
-            template = template.TrimEnd() + $"\n- name: \"{entrypoint}\"\n";
-        }
-
-        return template;
-    }
-
-    public static (string ConfigPath, IReadOnlyList<Dictionary<string, object?>>? Patches) PrepareProfile(
-        HarnessHome home,
-        string profileName,
-        IReadOnlyList<Dictionary<string, object?>>? patches)
-    {
-        ProfileStore.InitProfile(home, profileName);
-        var profileDir = ProfileStore.ResolveProfileDir(home, profileName);
-        var combined = new List<Dictionary<string, object?>>();
-        AddPatches(Path.Combine(profileDir, "cordis.patch.yml"));
-        AddPatches(Path.Combine(home.Root, "cordis.patch.yml"));
-        if (patches is { Count: > 0 })
-            combined.AddRange(patches);
-
-        var configPath = Path.Combine(profileDir, "cordis.yml");
-        if (!File.Exists(configPath))
-            File.WriteAllText(configPath, ProfileConfigTemplate(profileName));
-        return (configPath, combined.Count == 0 ? null : combined);
-
-        void AddPatches(string path)
-        {
-            if (File.Exists(path))
-                combined.AddRange(LoadPatches(path));
-        }
-    }
-
     [System.Diagnostics.CodeAnalysis.DynamicDependency(
         System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods,
         "Dsh.Interaction.ProviderBootstrapper",
         "Dsh.Interaction")]
-    public static async Task<HarnessApp> Compose(string configPath, HarnessOptions options, IReadOnlyList<Dictionary<string, object?>>? patches = null)
+    public static async Task<HarnessApp> Compose(HarnessOptions options)
     {
-        var fullPath = Path.GetFullPath(configPath);
-        if (!File.Exists(fullPath))
-            throw new RuntimeException("CONFIG_NOT_FOUND", $"config file not found: {fullPath}");
         await Task.Yield();
-
         options.Home.Ensure();
+        var settings = HarnessSettings.Load(options.Home);
+        settings.Plugins = PluginManifest.Merge(PluginManifest.LoadDefaults(), settings.Plugins);
+        var logging = LoggingSetup.Create(settings.Logging?.ToOptions(), options.Home.LogsPath, allowConsole: !options.IsTui);
         var credentials = new EnvCredentials(options.Home, options.Cwd);
-        var ctx = new Context();
+        var ctx = new Context(logging);
         ctx.SetOwn("dshHomePath", options.Home.Root);
         ctx.SetOwn("credentials", credentials);
         ctx.SetOwn("harnessOptions", options);
 
         var pluginHost = new PluginHost();
         pluginHost.ScanDirectory(AppContext.BaseDirectory);
+        var pluginsDirectory = Path.Combine(AppContext.BaseDirectory, "plugins");
+        var discovered = new List<string>();
+        var nativePlugins = new List<INativePlugin>();
+        if (Directory.Exists(pluginsDirectory))
+        {
+            if (RuntimeFeature.IsDynamicCodeSupported)
+                discovered.AddRange(pluginHost.ScanPluginDirectory(pluginsDirectory));
+            discovered.AddRange(RegisterNativePlugins(ctx, pluginHost, pluginsDirectory, nativePlugins));
+            if (!RuntimeFeature.IsDynamicCodeSupported
+                && discovered.Count == 0
+                && Directory.EnumerateFiles(pluginsDirectory, "*.dll").Any())
+                ctx.LoggerFor("loader").Warn("%s",
+                    $"NativeAOT build cannot load managed plugins from {pluginsDirectory}; ship native plugins there or compile managed plugins into the image");
+        }
+        PluginManifest.IncludeDiscovered(settings.Plugins, discovered);
         ctx.SetOwn("pluginCatalog", pluginHost.Catalog);
 
-        var settings = HarnessSettings.Load(options.Home);
         var defaultModel = settings.ResolveDefaultModel();
         var provider = options.Provider ?? defaultModel?.Provider ?? HarnessComposer.DefaultProvider;
         var model = options.Model ?? defaultModel?.Model ?? HarnessComposer.DefaultModel;
@@ -99,20 +57,19 @@ public static class ConfigBoot
             Model = model,
             ReasoningEffort = options.ReasoningEffort,
         };
+        app.Track(logging);
+        if (nativePlugins.Count > 0)
+            app.Track(new PluginDisposables(nativePlugins));
 
         try
         {
-            var composition = Composition.Load(
-                ctx,
-                fullPath,
-                builtins: null,
-                name => pluginHost.Catalog.TryCreateDefinition(name, out var definition) ? definition : null,
-                patches);
+            var composition = await Composition.StartAsync(ctx, BuildEntries(ctx, pluginHost, options, settings.Plugins));
             app.Composition = composition;
+            ctx.LoggerFor("boot").Info("composition ready: %d plugin(s), home %s", composition.Activations.Count, options.Home.Root);
             var providerRegistration = RegisterProviderAdapters(ctx, options);
             if (providerRegistration is not null)
                 app.Track(providerRegistration);
-            var manager = new HarnessPluginManager(pluginHost, composition);
+            var manager = new HarnessPluginManager(pluginHost, composition, options.Home, settings);
             app.Track(manager);
             ctx.Provide("pluginManager", manager);
         }
@@ -122,6 +79,33 @@ public static class ConfigBoot
             throw;
         }
         return app;
+    }
+
+    private static List<PluginEntry> BuildEntries(
+        Context ctx,
+        PluginHost host,
+        HarnessOptions options,
+        IReadOnlyDictionary<string, PluginSetting> plugins)
+    {
+        var entries = new List<PluginEntry>();
+        foreach (var (name, setting) in plugins)
+        {
+            if (!setting.Enabled)
+                continue;
+            if (!host.Catalog.TryCreateDefinition(name, out var definition))
+            {
+                ctx.LoggerFor("loader").Error("%s", $"plugin not found: {name}");
+                continue;
+            }
+            entries.Add(new PluginEntry(definition!, setting.Parameters.Count == 0 ? null : setting.Parameters));
+        }
+        if (options.EntrypointPlugin is { Length: > 0 } entrypoint
+            && !plugins.ContainsKey(entrypoint)
+            && host.Catalog.TryCreateDefinition(entrypoint, out var entryDefinition))
+        {
+            entries.Add(new PluginEntry(entryDefinition!, null));
+        }
+        return entries;
     }
 
     private static IDisposable? RegisterProviderAdapters(Context ctx, HarnessOptions options)
@@ -138,12 +122,47 @@ public static class ConfigBoot
             .Invoke(null, [ctx, options])!;
     }
 
-    public static IReadOnlyList<Dictionary<string, object?>> LoadPatches(string path)
+    /** 扫描 plugins 目录中的原生共享库,经桥接程序集转成插件定义。 */
+    private static IReadOnlyList<string> RegisterNativePlugins(
+        Context ctx,
+        PluginHost host,
+        string directory,
+        List<INativePlugin> loaded)
     {
-        var fullPath = Path.GetFullPath(path);
-        if (!File.Exists(fullPath))
-            throw new RuntimeException("PATCHES_NOT_FOUND", $"patch file not found: {fullPath}");
-        var list = YamlConfig.Load(File.ReadAllText(fullPath));
-        return list.OfType<Dictionary<string, object?>>().ToList();
+        var packages = new List<string>();
+        var bridge = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("Dsh.Plugins.Native.Host.NativePluginBridge"))
+            .FirstOrDefault(candidate => candidate is not null);
+        foreach (var file in Directory.EnumerateFiles(directory).Where(IsNativeLibrary))
+        {
+            var plugin = NativePluginLibrary.TryLoad(file);
+            if (plugin is null)
+                continue;
+            if (bridge is null)
+            {
+                plugin.Dispose();
+                ctx.LoggerFor("loader").Warn("%s",
+                    $"native plugin \"{plugin.Package}\" loaded from {file} but the native bridge is not available in this build");
+                continue;
+            }
+            var create = bridge.GetMethod("CreateDefinition", [typeof(INativePlugin)])!;
+            host.Catalog.RegisterDefinition(plugin.Package, () => (PluginDefinition)create.Invoke(null, [plugin])!);
+            loaded.Add(plugin);
+            packages.Add(plugin.Package);
+            ctx.LoggerFor("loader").Info("%s", $"native plugin registered: {plugin.Package} ({Path.GetFileName(file)})");
+        }
+        return packages;
+    }
+
+    private static bool IsNativeLibrary(string path)
+        => Path.GetExtension(path) is ".so" or ".dylib" or ".dll";
+
+    private sealed class PluginDisposables(IReadOnlyList<INativePlugin> plugins) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var plugin in plugins)
+                plugin.Dispose();
+        }
     }
 }

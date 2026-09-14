@@ -36,6 +36,7 @@
     <ProjectReference Include="..\..\src\Dsh.Boot\Dsh.Boot.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Plugins.Abstractions\Dsh.Plugins.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Plugins.Host\Dsh.Plugins.Host.csproj" />
+    <ProjectReference Include="..\..\src\Dsh.Plugins.Native.Host\Dsh.Plugins.Native.Host.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Jobs\Dsh.Jobs.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Terminal\Dsh.Terminal.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Checkpoints\Dsh.Checkpoints.csproj" />

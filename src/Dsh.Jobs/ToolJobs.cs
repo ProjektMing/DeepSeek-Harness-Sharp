@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -84,26 +85,19 @@ public static class ToolJobs
         var spentWakes = new ConditionalWeakTable<IAgent, StrongBox<int>>();
         if (delivery == CompletionDelivery.Wakeup)
         {
-            var offClaimed = ctx.On(AgentEventNames.InboxClaimed, (_, args) =>
+            var offClaimed = ctx.On<AgentInboxClaimedNotification>(notification =>
             {
-                var payload = args[0];
-                if (payload is null) return new ValueTask<object?>();
-                var agent = payload.GetType().GetProperty("Agent")?.GetValue(payload) as IAgent;
-                var message = payload.GetType().GetProperty("Message")?.GetValue(payload) as UserMessage;
-                if (agent is not null && message?.Source is UserMessageSource)
-                    spentWakes.Remove(agent);
-                return new ValueTask<object?>();
+                if (notification.Message.Source is UserMessageSource)
+                    spentWakes.Remove(notification.Agent);
             }, new EventOptions { Global = true });
             disposables.Add(new ActionDisposable(() => offClaimed()));
         }
 
         var outputLimits = new ConditionalWeakTable<ToolExecution, StrongBox<int>>();
-        var offPreExecute = ctx.On(ToolRuntime.PreExecuteEvent, (_, args) =>
+        var offPreExecute = ctx.OnWaterfall<ToolPreExecuteNotification>((notification, next) =>
         {
-            var exec = (ToolExecution)args[0]!;
-            var next = (Func<ValueTask<object?>>)args[^1]!;
-            if (VisibleOutputLimit(jobs, exec) is { } maxBytes)
-                outputLimits.AddOrUpdate(exec, new StrongBox<int>(maxBytes));
+            if (VisibleOutputLimit(jobs, notification.Run) is { } maxBytes)
+                outputLimits.AddOrUpdate(notification.Run, new StrongBox<int>(maxBytes));
             return next();
         }, new EventOptions { Prepend = true, Global = true });
         disposables.Add(new ActionDisposable(() => offPreExecute()));

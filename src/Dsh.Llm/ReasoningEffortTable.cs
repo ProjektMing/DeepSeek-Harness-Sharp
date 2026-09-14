@@ -57,7 +57,7 @@ public sealed class ReasoningEffortTable
     {
         if (overridePath is not null && File.Exists(overridePath))
         {
-            var overrides = JsonSerializer.Deserialize<List<ReasoningEffortProviderTable>>(File.ReadAllText(overridePath));
+            var overrides = DshJson.Deserialize<List<ReasoningEffortProviderTable>>(File.ReadAllText(overridePath));
             if (overrides is { Count: > 0 })
                 return new ReasoningEffortTable(overrides);
         }

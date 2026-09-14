@@ -4,6 +4,7 @@ using Dsh.Core;
 using Dsh.Llm;
 using Dsh.Persistence;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 
 namespace Dsh.Checkpoints;
 
@@ -65,11 +66,9 @@ public sealed class CheckpointService : Service, IDisposable
         _ = ctx.Get<SessionStore>(SessionStore.ServiceName)
             ?? throw new InvalidOperationException("checkpoints requires the sessionStore service");
         _worker = Task.Run(ProcessAsync);
-        ctx.On(SessionStore.EventEvent, (_, args) =>
-        {
-            Observe((Session)args[0]!, (SessionEvent)args[1]!);
-            return new ValueTask<object?>();
-        }, new EventOptions { Global = true });
+        ctx.On<SessionEventNotification>(
+            notification => Observe(notification.Session, notification.Event),
+            new EventOptions { Global = true });
     }
 
     public int MaxPoints => _policy.MaxPoints;

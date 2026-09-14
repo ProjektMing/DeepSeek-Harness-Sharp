@@ -25,9 +25,8 @@ public sealed class LocalFsService : Service
         _ = new LocalFsService(ctx, new LocalFsConfig { Cwd = cwd });
         return new CompositeDisposable();
     }
-
-    // cordis Node 桥按名字大小写敏感地解析成员,以下方法供 JS 插件以 camelCase 调用。
-    public object resolve(string path, IDictionary<string, object?>? options = null)
+    
+    public object Resolve(string path, IDictionary<string, object?>? options = null)
     {
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("fs.resolve: path must be a non-empty string");
@@ -37,7 +36,7 @@ public sealed class LocalFsService : Service
         return Path.GetFullPath(string.IsNullOrEmpty(baseDir) ? Path.Combine(Cwd, path) : Path.Combine(baseDir, path));
     }
 
-    public object? stat(string path, object? signal = null)
+    public object? Stat(string path, object? signal = null)
     {
         var full = Path.GetFullPath(path);
         if (File.Exists(full))
@@ -64,10 +63,10 @@ public sealed class LocalFsService : Service
         return null;
     }
 
-    public object readText(string path, object? signal = null)
+    public object ReadText(string path, object? signal = null)
         => File.ReadAllText(Path.GetFullPath(path), new UTF8Encoding(false, false));
 
-    public object writeText(string path, string content, object? signal = null)
+    public object WriteText(string path, string content, object? signal = null)
     {
         var full = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(full);
@@ -77,7 +76,7 @@ public sealed class LocalFsService : Service
         return new Dictionary<string, object?> { ["path"] = full };
     }
 
-    public object exists(string path, object? signal = null)
+    public object Exists(string path, object? signal = null)
     {
         var full = Path.GetFullPath(path);
         return File.Exists(full) || Directory.Exists(full);

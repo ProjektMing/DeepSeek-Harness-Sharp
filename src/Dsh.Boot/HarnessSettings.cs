@@ -1,3 +1,4 @@
+using Dsh.Runtime.Logging;
 using YamlDotNet.Serialization;
 
 namespace Dsh.Boot;
@@ -38,6 +39,12 @@ public sealed class HarnessSettings
     [YamlMember(Alias = "checkpoints")]
     public CheckpointsSettings? Checkpoints { get; set; }
 
+    [YamlMember(Alias = "logging")]
+    public LoggingSettings? Logging { get; set; }
+
+    [YamlIgnore]
+    public Dictionary<string, PluginSetting> Plugins { get; set; } = [];
+
     private const string MinimalSettingsTemplate = """
         global_default_model: deepseek-official/deepseek-v4-flash
         compaction_model: deepseek-official/deepseek-v4-flash
@@ -55,10 +62,14 @@ public sealed class HarnessSettings
         Directory.CreateDirectory(home.Root);
         if (!File.Exists(path))
             File.WriteAllText(path, LoadTemplate());
+        var text = File.ReadAllText(path);
         var deserializer = new StaticDeserializerBuilder(new DshYamlStaticContext())
             .WithAttemptingUnquotedStringTypeDeserialization()
+            .IgnoreUnmatchedProperties()
             .Build();
-        return deserializer.Deserialize<HarnessSettings>(File.ReadAllText(path));
+        var settings = deserializer.Deserialize<HarnessSettings>(text);
+        settings.Plugins = PluginManifest.ParseYaml(text);
+        return settings;
     }
 
     public void Save(HarnessHome home)
@@ -66,7 +77,28 @@ public sealed class HarnessSettings
         var path = Path.Combine(home.Root, "settings.yaml");
         Directory.CreateDirectory(home.Root);
         var serializer = new StaticSerializerBuilder(new DshYamlStaticContext()).Build();
-        File.WriteAllText(path, serializer.Serialize(this));
+        var text = serializer.Serialize(this);
+        var existing = File.Exists(path) ? File.ReadAllText(path) : null;
+        var plugins = existing is null ? null : SettingsDocument.ExtractPluginsBlock(existing);
+        WriteAtomic(path, SettingsDocument.ReplacePluginsBlock(text, plugins));
+    }
+
+    public void SavePlugins(HarnessHome home)
+    {
+        var path = Path.Combine(home.Root, "settings.yaml");
+        Directory.CreateDirectory(home.Root);
+        if (!File.Exists(path))
+            File.WriteAllText(path, LoadTemplate());
+        var text = File.ReadAllText(path);
+        WriteAtomic(path, SettingsDocument.ReplacePluginsBlock(text, SettingsDocument.RenderPlugins(Plugins)));
+    }
+
+    /** 先写同目录临时文件再改名,避免进程中断留下半截配置。 */
+    private static void WriteAtomic(string path, string content)
+    {
+        var temporary = $"{path}.tmp";
+        File.WriteAllText(temporary, content);
+        File.Move(temporary, path, overwrite: true);
     }
 
     public (string Provider, string Model)? ResolveDefaultModel()
@@ -177,6 +209,39 @@ public sealed class CheckpointsSettings
 
     [YamlMember(Alias = "keep_days")]
     public int KeepDays { get; set; } = DefaultKeepDays;
+}
+
+public sealed class LoggingSettings
+{
+    public const int BytesPerMegabyte = 1024 * 1024;
+
+    [YamlMember(Alias = "level")]
+    public string? Level { get; set; }
+
+    [YamlMember(Alias = "buffer_size")]
+    public int BufferSize { get; set; } = LoggingOptions.DefaultBufferSize;
+
+    [YamlMember(Alias = "console")]
+    public bool Console { get; set; }
+
+    [YamlMember(Alias = "file")]
+    public bool File { get; set; } = true;
+
+    [YamlMember(Alias = "file_max_mb")]
+    public int FileMaxMb { get; set; } = LoggingOptions.DefaultFileMaxBytes / BytesPerMegabyte;
+
+    [YamlMember(Alias = "keep_days")]
+    public int KeepDays { get; set; } = LoggingOptions.DefaultKeepDays;
+
+    public LoggingOptions ToOptions() => new()
+    {
+        Level = Level,
+        BufferSize = BufferSize,
+        Console = Console,
+        File = File,
+        FileMaxBytes = FileMaxMb * BytesPerMegabyte,
+        KeepDays = KeepDays,
+    };
 }
 
 public sealed class McpServerSettings

@@ -58,9 +58,9 @@ public sealed class AgentLoopAgent : IAgent
         Ctx = DshScope.CreateScope(loopCtx, ScopeKey).Extend((AgentContextKey, this));
         Inbox = new Inbox(session, new InboxNotifications
         {
-            Inserted = message => Dispatch.Emit(AgentEventNames.InboxInserted, new { Agent = this, Message = message }),
-            Discarded = message => Dispatch.Emit(AgentEventNames.InboxDiscarded, new { Agent = this, Message = message }),
-            Claimed = (message, turn) => Dispatch.Emit(AgentEventNames.InboxClaimed, new { Agent = this, Message = message, Turn = turn }),
+            Inserted = message => Dispatch.Emit(new AgentInboxInsertedNotification(this, message)),
+            Discarded = message => Dispatch.Emit(new AgentInboxDiscardedNotification(this, message)),
+            Claimed = (message, turn) => Dispatch.Emit(new AgentInboxClaimedNotification(this, message, turn)),
         });
         _phase = new Phase.Idle { LastTurn = lastTurnOf(session) };
         _runtimeContext = new RuntimeContextProjection(Ctx, session);
@@ -84,7 +84,7 @@ public sealed class AgentLoopAgent : IAgent
         var previousStatus = Status;
         _phase = next;
         if (Status != previousStatus)
-            Dispatch.Emit(AgentEventNames.Status, new { Agent = this, Status });
+            Dispatch.Emit(new AgentStatusNotification(this, Status));
     }
 
     private static CancellationTokenSource? PhaseAbort(Phase phase) => phase switch
@@ -193,7 +193,7 @@ public sealed class AgentLoopAgent : IAgent
             _ => 0,
         };
         var step = _phase is Phase.Running runningStep ? runningStep.Step : 0;
-        Dispatch.Emit(AgentEventNames.Error, new { Agent = this, Turn = turn, Step = step, Error = error });
+        Dispatch.Emit(new AgentErrorNotification(this, turn, step, error));
         return error;
     }
 
@@ -240,8 +240,7 @@ public sealed class AgentLoopAgent : IAgent
         var context = _runtimeContext.Project(PromptRender.JoinContextSections(sections), sections);
         var payload = new PreStepPayload(this, claimed, phase.Turn, phase.Step + 1, signal);
         var decision = await Dispatch.Waterfall(
-            AgentEventNames.PreStep,
-            payload,
+            new AgentPreStepNotification(payload),
             () => new ValueTask<object?>(new PreStepDecision.Enter(
                 context is null ? payload.Messages : [..payload.Messages, context]))) as PreStepDecision;
         signal.ThrowIfCancellationRequested();
@@ -314,7 +313,7 @@ public sealed class AgentLoopAgent : IAgent
                 signal.ThrowIfCancellationRequested();
                 if (turnEnds is not null && Inbox.NextStep.Count == 0)
                 {
-                    await Dispatch.Serial(AgentEventNames.TurnStopping, new AgentTurnStoppingPayload(this, turn, signal));
+                    await Dispatch.Serial(new AgentTurnStoppingNotification(new AgentTurnStoppingPayload(this, turn, signal)));
                     signal.ThrowIfCancellationRequested();
                 }
                 if (turnEnds is not null && Inbox.NextStep.Count == 0)
@@ -373,7 +372,8 @@ public sealed class AgentLoopAgent : IAgent
             {
                 var stream = preparedCall is not null
                     ? preparedCall.Stream(request, signal)
-                    : throw new InvalidOperationException("no LLM adapter prepared the request");
+                    : throw new InvalidOperationException(
+                        $"no LLM adapter is registered for provider \"{request.Provider}\" (providers missing an API key are skipped at startup; see the startup WARN)");
                 await foreach (var chunk in stream.WithCancellation(signal))
                 {
                     signal.ThrowIfCancellationRequested();
@@ -410,8 +410,7 @@ public sealed class AgentLoopAgent : IAgent
                     _ => throw new InvalidOperationException(),
                 };
                 var action = await Dispatch.Waterfall(
-                    AgentEventNames.RequestError,
-                    new AgentRequestErrorPayload(this, turn, step, request.Provider, failure, preparedCall.RetryPolicy, signal),
+                    new AgentRequestErrorNotification(new AgentRequestErrorPayload(this, turn, step, request.Provider, failure, preparedCall.RetryPolicy, signal)),
                     () => new ValueTask<object?>()) as RequestErrorAction;
                 signal.ThrowIfCancellationRequested();
                 if (action is not RequestErrorAction.Retry)
@@ -508,8 +507,7 @@ public sealed class AgentLoopAgent : IAgent
             ? RequestProposal(persistedHeader!)
             : new LlmCallConfig(provider, model, reasoningEffort, null, Options.MaxTokens);
         var proposedConfig = await Dispatch.Waterfall(
-            AgentEventNames.Request,
-            new AgentRequestPayload(this, phase.Turn, phase.Step, signal),
+            new AgentRequestNotification(new AgentRequestPayload(this, phase.Turn, phase.Step, signal)),
             () => new ValueTask<object?>(seedConfig)) as LlmCallConfig ?? seedConfig;
         signal.ThrowIfCancellationRequested();
         if (string.IsNullOrEmpty(proposedConfig.Provider) || string.IsNullOrEmpty(proposedConfig.Model))
@@ -776,7 +774,7 @@ public sealed class AgentLoopAgent : IAgent
         }
         catch (JsonException)
         {
-            return JsonSerializer.SerializeToElement(raw);
+            return DshJson.ToElement(raw);
         }
     }
 }

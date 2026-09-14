@@ -1,5 +1,6 @@
 using Dsh.Runtime;
 using Dsh.Llm;
+using Dsh.Runtime.Events;
 
 namespace Dsh.Core;
 
@@ -26,11 +27,11 @@ public sealed class RuntimeContextProjection
                 break;
             }
         }
-        ctx.On("session/event", (_, args) =>
+        ctx.On<SessionEventNotification>(notification =>
         {
-            if (!ReferenceEquals(args[0], session))
-                return new ValueTask<object?>();
-            var sessionEvent = (SessionEvent)args[1]!;
+            if (!ReferenceEquals(notification.Session, session))
+                return;
+            var sessionEvent = notification.Event;
             if (sessionEvent.Data is UserMessagePayload message && IsOwned(message.Message))
             {
                 _neverExisted = false;
@@ -42,7 +43,6 @@ public sealed class RuntimeContextProjection
             {
                 _retained = null;
             }
-            return new ValueTask<object?>();
         });
     }
 

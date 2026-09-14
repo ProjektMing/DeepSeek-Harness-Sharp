@@ -131,7 +131,7 @@ public sealed class WorkflowRunHost : IWorkflowRun
         }
 
         private static System.Text.Json.Nodes.JsonObject ToJsonObject(object value)
-            => JsonSerializer.SerializeToNode(value, DshJson.Options)?.AsObject()
+        => DshJson.ToNodeRuntime(value)?.AsObject()
                 ?? throw new InvalidOperationException("schema could not be serialized");
     }
 

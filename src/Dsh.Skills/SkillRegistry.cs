@@ -14,7 +14,6 @@ public sealed record SkillRegistryConfig
 public sealed class SkillRegistry : Service
 {
     public const string ServiceName = "skills";
-    public const string ChangeEvent = "skills/change";
     public const int BundledSkillRank = 600;
     public const int DefaultCollectCacheEntries = 128;
 
@@ -294,7 +293,7 @@ public sealed class SkillRegistry : Service
     {
         _revision += 1;
         _collectCache.Clear();
-        Ctx.Emit(ChangeEvent);
+        Ctx.Emit(new SkillsChangedNotification());
     }
 
     private int ScopeId(ScopeKey key)

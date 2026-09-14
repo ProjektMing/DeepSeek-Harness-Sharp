@@ -24,7 +24,7 @@ public static class RequestHeader
         var aTools = a.Tools ?? [];
         var bTools = b.Tools ?? [];
         return aTools.Count == bTools.Count
-            && aTools.Zip(bTools).All(pair => JsonSerializer.Serialize(pair.First, DshJson.Options) == JsonSerializer.Serialize(pair.Second, DshJson.Options));
+            && aTools.Zip(bTools).All(pair => DshJson.Serialize(pair.First) == DshJson.Serialize(pair.Second));
     }
 
     public static EpochHeader? Fold(IEnumerable<SessionEvent> events, EpochHeader? from = null)

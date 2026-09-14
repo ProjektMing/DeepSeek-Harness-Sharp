@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -38,8 +39,8 @@ public sealed class StructuredOutputAttachment : IDisposable
     public static StructuredOutputAttachment Attach(Context childCtx, IAgent child, JsonObject schema)
     {
         var attachment = new StructuredOutputAttachment(child, schema);
-        attachment._disposables.Add(new FuncDispose(childCtx.On(ToolRuntime.ExecuteEvent, attachment.OnExecute)));
-        attachment._disposables.Add(new FuncDispose(childCtx.On(ToolRuntime.ResultEvent, attachment.OnResult)));
+        attachment._disposables.Add(new FuncDispose(childCtx.OnWaterfall<ToolExecuteNotification>(attachment.OnExecute)));
+        attachment._disposables.Add(new FuncDispose(childCtx.On<ToolResultNotification>(attachment.OnResult)));
         var tools = childCtx.Get<ToolRuntime>(ToolRuntime.ServiceName)!;
         attachment._disposables.Add(tools.Guard(attachment.GuardTool));
         return attachment;
@@ -53,11 +54,10 @@ public sealed class StructuredOutputAttachment : IDisposable
     }
 
     // structured_output 不经 ToolRuntime 注册（注册只能落全局层，会污染其他 agent 的提示词）;
-    // 执行在 tools/execute 瀑布按 child 身份拦截，与 TS 的子 scope 注册语义一致。
-    private async ValueTask<object?> OnExecute(object? thisArg, object?[] args)
+    // 执行在 ToolExecuteNotification 瀑布按 child 身份拦截，与 TS 的子 scope 注册语义一致。
+    private async ValueTask<object?> OnExecute(ToolExecuteNotification notification, Func<ValueTask<object?>> next)
     {
-        var exec = (ToolRunContext)args[0]!;
-        var next = (Func<ValueTask<object?>>)args[^1]!;
+        var exec = notification.Run;
         if (!ReferenceEquals(exec.Agent, _child) || exec.Name != ToolName)
             return await next();
         var violations = JsonSchemaValidator.Validate(_schema, exec.Arguments, "arguments");
@@ -77,10 +77,10 @@ public sealed class StructuredOutputAttachment : IDisposable
         };
     }
 
-    private ValueTask<object?> OnResult(object? thisArg, object?[] args)
+    private void OnResult(ToolResultNotification notification)
     {
-        var exec = (ToolExecution)args[0]!;
-        var result = (ToolExecutionResult)args[1]!;
+        var exec = notification.Run;
+        var result = notification.Result;
         if (ReferenceEquals(exec.Agent, _child)
             && exec.Name == ToolName
             && exec.Parent is null
@@ -89,7 +89,6 @@ public sealed class StructuredOutputAttachment : IDisposable
         {
             _captured = staged;
         }
-        return new ValueTask<object?>();
     }
 
     private string? GuardTool(ToolExecution exec)

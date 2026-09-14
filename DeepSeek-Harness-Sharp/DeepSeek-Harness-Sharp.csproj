@@ -6,11 +6,17 @@
         <RootNamespace>DeepSeek_Harness_Sharp</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <PublishAot>true</PublishAot>
         <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
         <InvariantGlobalization>true</InvariantGlobalization>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
         <CETCompat>false</CETCompat>
+    </PropertyGroup>
+
+    <!-- 发布形态:默认 Release 为 JIT + partial 裁剪 + 自包含;AOT 属可选档,用 -p:PublishAot=true 命令行开启(见 README)。 -->
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+        <PublishTrimmed>true</PublishTrimmed>
+        <TrimMode>partial</TrimMode>
+        <SelfContained>true</SelfContained>
     </PropertyGroup>
 
     <ItemGroup>
@@ -25,27 +31,52 @@
     </ItemGroup>
 
     
-    <ItemGroup Condition="'$(PublishAot)' == 'true'">
+    <ItemGroup>
       <ProjectReference Include="..\src\Dsh.*\*.csproj"
                         Exclude="..\src\Dsh.Boot\Dsh.Boot.csproj;..\src\Dsh.Plugins.Abstractions\Dsh.Plugins.Abstractions.csproj;..\src\Dsh.Plugins.Host\Dsh.Plugins.Host.csproj;..\src\Dsh.Plugins.Generator\Dsh.Plugins.Generator.csproj" />
-      <!-- 工具结果记录通过反射式 System.Text.Json 序列化(ToolRuntime.SnapshotValue),裁剪属性会导致 AOT 下工具输出缺字段而报错,因此保留各插件程序集成员。 -->
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true'">
+      <!-- 契约面 + 全部插件程序集:工具结果 record 走反射式 System.Text.Json 序列化,成员不可裁。 -->
+      <TrimmerRootAssembly Include="Dsh.Plugins.Abstractions" />
+      <TrimmerRootAssembly Include="Dsh.Runtime" />
+      <TrimmerRootAssembly Include="Dsh.Plugins.Host" />
+      <TrimmerRootAssembly Include="Dsh.Plugins.Native" />
+      <TrimmerRootAssembly Include="Dsh.Plugins.Native.Host" />
+      <TrimmerRootAssembly Include="Dsh.Llm" />
       <TrimmerRootAssembly Include="Dsh.Core" />
-      <TrimmerRootAssembly Include="Dsh.Tools" />
-      <TrimmerRootAssembly Include="Dsh.Goal" />
-      <TrimmerRootAssembly Include="Dsh.Jobs" />
-      <TrimmerRootAssembly Include="Dsh.Mcp" />
-      <TrimmerRootAssembly Include="Dsh.Skills" />
-      <TrimmerRootAssembly Include="Dsh.Subagent" />
-      <TrimmerRootAssembly Include="Dsh.Terminal" />
-      <TrimmerRootAssembly Include="Dsh.Workflow" />
+      <TrimmerRootAssembly Include="Dsh.AgentInstructions" />
       <TrimmerRootAssembly Include="Dsh.Interaction" />
       <TrimmerRootAssembly Include="Dsh.Interaction.AskUser" />
+      <TrimmerRootAssembly Include="Dsh.Persistence" />
+      <TrimmerRootAssembly Include="Dsh.Mcp" />
+      <TrimmerRootAssembly Include="Dsh.Tools" />
+      <TrimmerRootAssembly Include="Dsh.Skills" />
+      <TrimmerRootAssembly Include="Dsh.Goal" />
+      <TrimmerRootAssembly Include="Dsh.Compaction" />
+      <TrimmerRootAssembly Include="Dsh.PlanMode" />
+      <TrimmerRootAssembly Include="Dsh.Jobs" />
+      <TrimmerRootAssembly Include="Dsh.Subagent" />
+      <TrimmerRootAssembly Include="Dsh.Web" />
+      <TrimmerRootAssembly Include="Dsh.Workflow" />
+      <TrimmerRootAssembly Include="Dsh.Terminal" />
       <TrimmerRootAssembly Include="Dsh.Checkpoints" />
       <TrimmerRootAssembly Include="Dsh.IdeHistory" />
-      <TrimmerRootAssembly Include="Dsh.Llm" />
-      <TrimmerRootAssembly Include="Dsh.Persistence" />
       <TrimmerRootAssembly Include="Dsh.Pty" />
       <TrimmerRootAssembly Include="Dsh.Sdk" />
+      <TrimmerRootAssembly Include="Dsh.Tui" />
+      <TrimmerRootAssembly Include="Dsh.Gui" />
+      <TrimmerRootAssembly Include="Dsh.Acp" />
+      <TrimmerRootAssembly Include="Dsh.Lsp" />
+      <TrimmerRootAssembly Include="Dsh.Llm.DeepSeek" />
+      <TrimmerRootAssembly Include="Dsh.Llm.OpenAi" />
+      <TrimmerRootAssembly Include="Dsh.Llm.Anthropic" />
+      <TrimmerRootAssembly Include="Dsh.E2b" />
+      <TrimmerRootAssembly Include="Dsh.Memory" />
+      <TrimmerRootAssembly Include="Dsh.SessionQuery" />
+      <TrimmerRootAssembly Include="Dsh.Telemetry" />
+      <!-- 会话事件 payload 的反射式 JSON 需要参数化构造 record 转换器(闭源泛型由反射实例化),裁掉即无法读写 JSONL。 -->
+      <TrimmerRootAssembly Include="System.Text.Json" />
     </ItemGroup>
 
     <Target Name="CopyPluginAndSurfaceAssemblies" AfterTargets="Build">

@@ -58,7 +58,7 @@ public sealed class ContentBlockJsonConverter : JsonConverter<ContentBlock>
         {
             "text" => new TextBlock(root.GetProperty("text").GetString() ?? ""),
             "reasoning" => new ReasoningBlock(root.GetProperty("text").GetString() ?? ""),
-            "image" => new ImageBlock(root.GetProperty("attachment").Deserialize<ImageAttachmentRef>(options)
+            "image" => new ImageBlock(DshJson.Deserialize<ImageAttachmentRef>(root.GetProperty("attachment"))
                 ?? throw new JsonException("image block missing attachment")),
             "tool-call" => new ToolCallBlock(
                 ToolCallId.Create(root.GetProperty("id").GetString() ?? throw new JsonException("tool-call missing id")),
@@ -66,7 +66,7 @@ public sealed class ContentBlockJsonConverter : JsonConverter<ContentBlock>
                 root.GetProperty("arguments").GetString() ?? ""),
             "tool-result" => new ToolResultBlock(
                 ToolCallId.Create(root.GetProperty("toolCallId").GetString() ?? throw new JsonException("tool-result missing toolCallId")),
-                root.GetProperty("content").Deserialize<IReadOnlyList<ContentBlock>>(options) ?? [],
+                DshJson.Deserialize<IReadOnlyList<ContentBlock>>(root.GetProperty("content")) ?? [],
                 root.TryGetProperty("isError", out var isError) ? isError.GetBoolean() : null),
             _ => new UnknownContentBlock(type, root.Clone()),
         };
@@ -91,7 +91,7 @@ public sealed class ContentBlockJsonConverter : JsonConverter<ContentBlock>
                 break;
             case ImageBlock image:
                 writer.WritePropertyName("attachment");
-                JsonSerializer.Serialize(writer, image.Attachment, options);
+                DshJson.Serialize(writer, image.Attachment);
                 break;
             case ToolCallBlock call:
                 writer.WriteString("id", call.Id.Value);
@@ -101,7 +101,7 @@ public sealed class ContentBlockJsonConverter : JsonConverter<ContentBlock>
             case ToolResultBlock result:
                 writer.WriteString("toolCallId", result.ToolCallId.Value);
                 writer.WritePropertyName("content");
-                JsonSerializer.Serialize(writer, result.Content, options);
+                DshJson.Serialize(writer, result.Content);
                 if (result.IsError is { } isError)
                     writer.WriteBoolean("isError", isError);
                 break;

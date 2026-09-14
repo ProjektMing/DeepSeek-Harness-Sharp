@@ -79,7 +79,7 @@ public sealed class HarnessClient : IAsyncDisposable
     {
         if (result is not JsonElement element)
             throw new InvalidOperationException($"{method} returned no JSON result");
-        return element.Deserialize<T>(DshJson.Options)
+        return DshJson.Deserialize<T>(element)
             ?? throw new InvalidOperationException($"{method} returned an invalid result");
     }
 }

@@ -97,7 +97,4 @@ public abstract class WorkflowEngine(Context ctx) : Service(ctx, ServiceName)
     public const string ServiceName = "workflowEngine";
 
     public abstract IWorkflowRun Start(WorkflowStartRequest request);
-
-    protected void EmitWorkflowEvent(string name, params object?[] args)
-        => Ctx.Events.Emit(Ctx, name, args);
 }

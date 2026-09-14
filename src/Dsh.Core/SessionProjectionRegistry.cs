@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
+using Dsh.Llm;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 
 namespace Dsh.Core;
 
@@ -69,7 +71,7 @@ public sealed class SessionProjectionRegistry : Service
                 if (sessionEvent is null || sessionEvent.Seq != seq)
                 {
                     throw new InvalidOperationException(
-                        $"session projection {System.Text.Json.JsonSerializer.Serialize(definition.Key)} cannot advance across missing seq {seq}");
+                        $"session projection {DshJson.Serialize(definition.Key)} cannot advance across missing seq {seq}");
                 }
                 cell.State = definition.Apply(cell.State, sessionEvent);
                 cell.ObservedSeq = seq;
@@ -98,10 +100,9 @@ public sealed class SessionProjectionRegistry : Service
 
     public SessionProjectionRegistry(Context ctx) : base(ctx, ServiceName)
     {
-        ctx.On(SessionStore.EventEvent, (_, args) =>
+        ctx.On<SessionEventNotification>(notification =>
         {
-            Drive((Session)args[0]!, (SessionEvent)args[1]!);
-            return new ValueTask<object?>();
+            Drive(notification.Session, notification.Event);
         }, new EventOptions { Global = true });
     }
 
@@ -110,14 +111,14 @@ public sealed class SessionProjectionRegistry : Service
         if (definition.StateVersion < 0)
         {
             throw new ArgumentException(
-                $"session projection {System.Text.Json.JsonSerializer.Serialize(definition.Key)} stateVersion must be a non-negative integer, got {definition.StateVersion}");
+                $"session projection {DshJson.Serialize(definition.Key)} stateVersion must be a non-negative integer, got {definition.StateVersion}");
         }
         if (_registrations.TryGetValue(definition.Key, out var existing))
         {
             if (existing.StateVersion != definition.StateVersion)
             {
                 throw new InvalidOperationException(
-                    $"session projection {System.Text.Json.JsonSerializer.Serialize(definition.Key)} is already registered at stateVersion {existing.StateVersion}; refusing to share it with stateVersion {definition.StateVersion}");
+                    $"session projection {DshJson.Serialize(definition.Key)} is already registered at stateVersion {existing.StateVersion}; refusing to share it with stateVersion {definition.StateVersion}");
             }
             existing.Refs += 1;
             return new RegistrationHandle(() => Release(definition.Key));

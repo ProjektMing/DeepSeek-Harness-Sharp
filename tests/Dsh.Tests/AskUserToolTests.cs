@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Interaction.AskUser;
@@ -64,9 +65,8 @@ public class AskUserToolTests
         Func<AskUserQuestionRequest, AskUserQuestionAnswer> answer,
         bool global = false)
     {
-        var dispose = harness.Ctx.On(
-            UserQuestionService.RequestEvent,
-            (_, args) => new ValueTask<object?>(answer((AskUserQuestionRequest)args[0]!)),
+        var dispose = harness.Ctx.OnWaterfall<UserQuestionsRequestNotification>(
+            (notification, _) => ValueTask.FromResult<object?>(answer(notification.Request)),
             global ? new EventOptions { Global = true } : null);
         return new AnswererSubscription(dispose);
     }
@@ -154,10 +154,10 @@ public class AskUserToolTests
         using var harness = new Harness();
         using var tool = AskUserTool.Register(harness.Ctx);
         AskUserQuestionRequest? seen = null;
-        harness.Ctx.On(UserQuestionService.RequestEvent, (_, args) =>
+        harness.Ctx.OnWaterfall<UserQuestionsRequestNotification>((notification, _) =>
         {
-            seen = (AskUserQuestionRequest)args[0]!;
-            return new ValueTask<object?>(new AskUserQuestionAnswer(
+            seen = notification.Request;
+            return ValueTask.FromResult<object?>(new AskUserQuestionAnswer(
             [
                 new AskUserQuestionAnswerItem("targets", ["tests", "docs"], "release notes"),
                 new AskUserQuestionAnswerItem("labels-only", ["tests"]),
@@ -188,7 +188,7 @@ public class AskUserToolTests
         using var harness = new Harness();
         using var tool = AskUserTool.Register(harness.Ctx);
         using var cts = new CancellationTokenSource();
-        harness.Ctx.On(UserQuestionService.RequestEvent, (_, _) =>
+        harness.Ctx.OnWaterfall<UserQuestionsRequestNotification>((_, _) =>
         {
             cts.Cancel();
             throw new InvalidOperationException("provider exploded");

@@ -59,7 +59,7 @@ public sealed class AgentLoop : Service, IAgentFactory
             options.InheritedEventCount);
         var agent = new AgentLoopAgent(owner, session.Id, options.AgentOptions ?? new AgentOptions(), session, LastTurnOf);
         options.Setup?.Invoke(agent.Ctx);
-        Ctx.Emit(AgentEventNames.SessionStart, new { Agent = agent, Source = "startup" });
+        Ctx.Emit(new AgentSessionStartNotification(agent, "startup"));
         return Task.FromResult<IAgent>(agent);
     }
 
@@ -77,7 +77,7 @@ public sealed class AgentLoop : Service, IAgentFactory
         sessions.Announce(session);
         var agent = new AgentLoopAgent(owner, session.Id, options.AgentOptions ?? new AgentOptions(), session, LastTurnOf);
         options.Setup?.Invoke(agent.Ctx);
-        Ctx.Emit(AgentEventNames.SessionStart, new { Agent = agent, Source = "resume" });
+        Ctx.Emit(new AgentSessionStartNotification(agent, "resume"));
         return Task.FromResult<IAgent>(agent);
     }
 

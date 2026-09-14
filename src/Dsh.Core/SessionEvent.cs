@@ -40,16 +40,16 @@ public static class SessionEventCodec
         Register<InboxSplicePayload>(SessionEventTypes.AgentInboxSpliced);
         Register<UserMessagePayload>(SessionEventTypes.UserMessage,
             (element, options) => new UserMessagePayload(
-                element.Deserialize<UserMessage>(options)
+                DshJson.Deserialize<UserMessage>(element)
                 ?? throw new JsonException("user/message payload is not a user message")),
-            (payload, writer, options) => JsonSerializer.Serialize(writer, payload.Message, options));
+            (payload, writer, options) => DshJson.Serialize(writer, payload.Message));
     }
 
     public static void Register<T>(string type) where T : SessionEventPayload
         => Register<T>(type,
-            (element, options) => element.Deserialize<T>(options)
+            (element, options) => DshJson.Deserialize<T>(element)
                 ?? throw new JsonException($"invalid \"{type}\" payload"),
-            static (payload, writer, options) => JsonSerializer.Serialize(writer, payload, options));
+            static (payload, writer, options) => DshJson.Serialize(writer, payload));
 
     public static void Register<T>(
         string type,
@@ -119,10 +119,10 @@ public sealed class SessionEventJsonConverter : JsonConverter<SessionEvent>
             Data = data,
             Ignorable = ignorable,
             SurfaceOp = root.TryGetProperty("surfaceOp", out var surfaceOp)
-                ? surfaceOp.Deserialize<SurfaceOp>(options)
+                ? DshJson.Deserialize<SurfaceOp>(surfaceOp)
                 : null,
             SourceEventSeqs = root.TryGetProperty("sourceEventSeqs", out var seqs)
-                ? seqs.Deserialize<IReadOnlyList<long>>(options)
+                ? DshJson.Deserialize<IReadOnlyList<long>>(seqs)
                 : null,
         };
     }
@@ -140,12 +140,12 @@ public sealed class SessionEventJsonConverter : JsonConverter<SessionEvent>
         if (value.SurfaceOp is { } surfaceOp)
         {
             writer.WritePropertyName("surfaceOp");
-            JsonSerializer.Serialize(writer, surfaceOp, options);
+            DshJson.Serialize(writer, surfaceOp);
         }
         if (value.SourceEventSeqs is { } sourceEventSeqs)
         {
             writer.WritePropertyName("sourceEventSeqs");
-            JsonSerializer.Serialize(writer, sourceEventSeqs, options);
+            DshJson.Serialize(writer, sourceEventSeqs);
         }
         writer.WriteEndObject();
     }

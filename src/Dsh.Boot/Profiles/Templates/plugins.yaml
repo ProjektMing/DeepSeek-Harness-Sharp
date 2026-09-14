@@ -1,0 +1,33 @@
+# DSH 默认插件清单。
+# settings.yaml 中缺失的条目按这里的 enabled 值补进内存视图,用户 settings.yaml 中的同名条目优先。
+# 本文件是安装包的一部分,应用不会改写它;调整插件开关请编辑 settings.yaml 或用 /plugins 命令。
+
+plugins:
+  "@deepseek-ai/dsh-core": true
+  "@deepseek-ai/dsh-agent-instructions": true
+  "@deepseek-ai/dsh-interaction": true
+  "@deepseek-ai/dsh-persistence": true
+  "@deepseek-ai/dsh-mcp": true
+  "@deepseek-ai/dsh-subprocess": true
+  "@deepseek-ai/dsh-tool-bash": true
+  "@deepseek-ai/dsh-tool-pwsh": true
+  "@deepseek-ai/dsh-tool-fs": true
+  "@deepseek-ai/dsh-tool-fs-search": true
+  "@deepseek-ai/dsh-tool-todo": true
+  "@deepseek-ai/dsh-tool-str-replace-editor": true
+  "@deepseek-ai/dsh-fs-local": true
+  "@deepseek-ai/dsh-skill": true
+  "@deepseek-ai/dsh-skill-filesystem": true
+  "@deepseek-ai/dsh-goal": true
+  "@deepseek-ai/dsh-tool-goal": true
+  "@deepseek-ai/dsh-tool-ask-user": true
+  # plan 模式需要用户提供 section(提示词文本)配置后才可用,默认关闭;启用示例:
+  #   "@deepseek-ai/dsh-plan-mode":
+  #     enabled: true
+  #     section: <计划模式的提示词文本>
+  "@deepseek-ai/dsh-plan-mode": false
+  "@deepseek-ai/dsh-command-compact": true
+  "@deepseek-ai/dsh-jobs-local": true
+  "@deepseek-ai/dsh-tool-jobs": true
+  "@deepseek-ai/dsh-checkpoints": true
+  "@deepseek-ai/dsh-ide-history": true

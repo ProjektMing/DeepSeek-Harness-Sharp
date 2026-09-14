@@ -1,3 +1,7 @@
+using Dsh.Runtime.Ioc;
+using Dsh.Runtime.Logging;
+using Dsh.Runtime.Events;
+
 namespace Dsh.Runtime;
 
 public sealed class Context
@@ -6,27 +10,36 @@ public sealed class Context
 
     private readonly Dictionary<object, object?> _own = new(ReferenceEqualityComparer.Instance);
     private readonly Context? _prototype;
-    private readonly List<PluginActivation> _activations;
-    private readonly Lock _activationSync;
+    private readonly PluginScheduler _scheduler;
     private EventsService? _events;
     private LoggerService? _logger;
+    private IServiceProvider? _serviceProvider;
 
     public Context Root { get; }
     public PluginActivation Activation { get; }
 
     internal ServiceTable ServiceTable { get; }
     internal EventTable EventTable { get; }
-    internal LoggerState LoggerState { get; }
+    internal LoggingSetup Logging { get; }
 
-    public Context()
+    public PluginScheduler Scheduler => _scheduler;
+
+    public Context() : this(LoggingSetup.Create(), new DryIocServiceRegistry())
     {
+    }
+
+    public Context(LoggingSetup logging) : this(logging, new DryIocServiceRegistry())
+    {
+    }
+
+    public Context(LoggingSetup logging, IServiceRegistry services)
+    {
+        Logging = logging;
         Root = this;
-        ServiceTable = new ServiceTable();
+        ServiceTable = new ServiceTable(services);
         EventTable = new EventTable();
-        LoggerState = new LoggerState();
-        _activations = [];
-        _activationSync = new Lock();
-        Activation = new PluginActivation("root", [], null, definition: null);
+        _scheduler = new PluginScheduler(this);
+        Activation = PluginActivation.CreateRoot();
         Activation.Attach(this);
     }
 
@@ -36,9 +49,8 @@ public sealed class Context
         Root = prototype.Root;
         ServiceTable = prototype.ServiceTable;
         EventTable = prototype.EventTable;
-        LoggerState = prototype.LoggerState;
-        _activations = prototype._activations;
-        _activationSync = prototype._activationSync;
+        Logging = prototype.Logging;
+        _scheduler = prototype._scheduler;
         Activation = activation ?? prototype.Activation;
     }
 
@@ -51,6 +63,8 @@ public sealed class Context
         }
         return child;
     }
+
+    internal Context CreatePluginContext(PluginActivation activation) => new(this, activation);
 
     public object? GetProp(object key)
     {
@@ -70,63 +84,55 @@ public sealed class Context
 
     public EventsService Events => _events ??= new EventsService(this, EventTable);
 
-    public LoggerService Logger => _logger ??= new LoggerService(this, LoggerState);
+    public LoggerService Logger => _logger ??= new LoggerService(this, Logging);
 
     public Logger LoggerFor(string? name = null) => Logger.Invoke(name, this);
 
     public object? Get(string name, bool strict = true) => ServiceTable.Get(name, strict);
+
+    /** 只读 IServiceProvider 视图,供生态库按类型取用已注册实例。 */
+    public IServiceProvider ServiceProvider => _serviceProvider ??= new ServiceProviderView(ServiceTable.Registry);
 
     public T? Get<T>(string name, bool strict = true) where T : class => ServiceTable.Get(name, strict) as T;
 
     public EffectHandle Provide(string name, object? value = null, Func<bool>? check = null)
         => ServiceTable.Provide(this, name, value, check);
 
-    public Func<bool> On(object name, EventListener listener, EventOptions? options = null)
-        => Events.On(name, listener, options);
+    public Func<bool> On<TNotification>(INotificationHandler<TNotification> handler, EventOptions? options = null)
+        where TNotification : INotification
+        => Events.On(handler, options);
 
-    public void Emit(object name, params object?[] args) => Events.Emit(null, name, args);
+    public Func<bool> OnBail<TNotification>(IBailHandler<TNotification> handler, EventOptions? options = null)
+        where TNotification : INotification
+        => Events.OnBail(handler, options);
 
-    public Task Parallel(object name, params object?[] args) => Events.Parallel(null, name, args);
+    public Func<bool> OnWaterfall<TNotification>(IWaterfallHandler<TNotification> handler, EventOptions? options = null)
+        where TNotification : INotification
+        => Events.OnWaterfall(handler, options);
 
-    public ValueTask<object?> Serial(object name, params object?[] args) => Events.Serial(null, name, args);
+    public Func<bool> On(Type notificationType, Func<object, ValueTask> handler, EventOptions? options = null)
+        => Events.On(notificationType, handler, options);
+
+    public void Emit<TNotification>(TNotification notification) where TNotification : INotification
+        => Events.Emit(notification);
+
+    public Task Parallel<TNotification>(TNotification notification) where TNotification : INotification
+        => Events.Parallel(notification);
+
+    public ValueTask<object?> Serial<TNotification>(TNotification notification) where TNotification : INotification
+        => Events.Serial(notification);
+
+    public ValueTask<object?> Waterfall<TNotification>(TNotification notification, Func<ValueTask<object?>> inner)
+        where TNotification : INotification
+        => Events.Waterfall(notification, inner);
 
     public EffectHandle Effect(Func<object?> execute, string label = "anonymous")
         => Activation.Effect(execute, label);
 
     public PluginActivation Plugin(PluginDefinition definition, object? config = null)
-    {
-        var activation = new PluginActivation(definition.Name ?? "anonymous", definition.Inject, config, definition);
-        activation.Attach(new Context(this, activation));
-        AddActivation(activation);
-        activation.TryStart();
-        return activation;
-    }
+        => Root.Scheduler.Register(definition, config);
 
     internal bool IsServiceInjectable(string name) => ServiceTable.IsInjectable(name);
-
-    internal void NotifyServiceChanged()
-    {
-        foreach (var activation in ActivationsSnapshot())
-            activation.TryStart();
-    }
-
-    internal void AddActivation(PluginActivation activation)
-    {
-        lock (_activationSync)
-            _activations.Add(activation);
-    }
-
-    internal void RemoveActivation(PluginActivation activation)
-    {
-        lock (_activationSync)
-            _activations.Remove(activation);
-    }
-
-    internal IReadOnlyList<PluginActivation> ActivationsSnapshot()
-    {
-        lock (_activationSync)
-            return [.. _activations];
-    }
 
     public override string ToString() => $"Context <{Activation.Name}>";
 }

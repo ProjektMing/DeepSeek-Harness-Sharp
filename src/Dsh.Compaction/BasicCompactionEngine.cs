@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -224,10 +225,9 @@ public class BasicCompactionEngine : CompactionEngine, IDisposable
 
     private void RegisterAutomaticCompaction()
     {
-        _listeners.Add(Ctx.On(AgentEventNames.PreStep, async (_, args) =>
+        _listeners.Add(Ctx.OnWaterfall<AgentPreStepNotification>(async (notification, next) =>
         {
-            var payload = (PreStepPayload)args[0]!;
-            var next = (Func<ValueTask<object?>>)args[1]!;
+            var payload = notification.Payload;
             if (!payload.Signal.IsCancellationRequested)
             {
                 try
@@ -246,28 +246,22 @@ public class BasicCompactionEngine : CompactionEngine, IDisposable
             return await next();
         }, new EventOptions { Global = true }));
 
-        _listeners.Add(Ctx.On(AgentEventNames.Status, (_, args) =>
+        _listeners.Add(Ctx.On<AgentStatusNotification>(notification =>
         {
-            var payload = args[0]!;
-            if (payload.GetType().GetProperty("Status")?.GetValue(payload) is AgentStatus.Idle
-                && payload.GetType().GetProperty("Agent")?.GetValue(payload) is IAgent agent)
-                _overflowRetries.Remove(agent);
-            return new ValueTask<object?>();
+            if (notification.Status is AgentStatus.Idle)
+                _overflowRetries.Remove(notification.Agent);
         }, new EventOptions { Global = true }));
 
-        _listeners.Add(Ctx.On(SessionStore.EventEvent, (_, args) =>
+        _listeners.Add(Ctx.On<SessionEventNotification>(notification =>
         {
-            if (args[1] is SessionEvent { Type: SessionEventTypes.AssistantMessage }
-                && args[0] is Session session
-                && _overflowAgents.TryGetValue(session, out var agent))
+            if (notification.Event is { Type: SessionEventTypes.AssistantMessage }
+                && _overflowAgents.TryGetValue(notification.Session, out var agent))
                 _overflowRetries.Remove(agent);
-            return new ValueTask<object?>();
         }, new EventOptions { Global = true }));
 
-        _listeners.Add(Ctx.On(AgentEventNames.RequestError, async (_, args) =>
+        _listeners.Add(Ctx.OnWaterfall<AgentRequestErrorNotification>(async (notification, next) =>
         {
-            var payload = (AgentRequestErrorPayload)args[0]!;
-            var next = (Func<ValueTask<object?>>)args[1]!;
+            var payload = notification.Payload;
             if (payload.Failure.Code != LlmFailureCodes.ContextWindowExceeded || payload.Signal.IsCancellationRequested)
                 return await next();
             var agent = payload.Agent;

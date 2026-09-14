@@ -28,11 +28,6 @@ public sealed record ToolView(
 public sealed class ToolRuntime : Service
 {
     public const string ServiceName = "tools";
-    public const string PreExecuteEvent = "tools/pre-execute";
-    public const string ExecuteEvent = "tools/execute";
-    public const string PostExecuteEvent = "tools/post-execute";
-    public const string ResultEvent = "tools/result";
-    public const string ChangeEvent = "tools/change";
     public const string RunCodeName = "run_code";
 
     private sealed class ToolLayer
@@ -61,7 +56,7 @@ public sealed class ToolRuntime : Service
     public ToolRuntime(Context ctx, ToolPresentationMode defaultMode = ToolPresentationMode.Native) : base(ctx, ServiceName)
     {
         _defaultMode = defaultMode;
-        _layers = new ScopedLayers<ToolLayer>(scope => new ToolLayer(scope), () => ctx.Emit(ChangeEvent));
+        _layers = new ScopedLayers<ToolLayer>(scope => new ToolLayer(scope), () => ctx.Emit(new ToolChangeNotification()));
         var systemPrompt = ctx.Get<SystemPrompt>(SystemPrompt.ServiceName, false)
             ?? throw new InvalidOperationException("tools requires the systemPrompt service");
         systemPrompt.Tools(context => WireSchemas(context.Scope));
@@ -234,7 +229,7 @@ public sealed class ToolRuntime : Service
         };
     }
 
-    // cordis Node 桥按名字大小写敏感地解析成员,以下两个方法供 JS 插件以 camelCase 调用。
+    // 以下两个成员由 dsh/service.call 桥按名字字符串调用(匹配不区分大小写)。
     public List<Dictionary<string, object?>> schemas(object? agent = null)
     {
         var scope = agent is IAgent resolved ? resolved.ScopeKey : null;
@@ -267,7 +262,7 @@ public sealed class ToolRuntime : Service
         null => JsonDocument.Parse("{}").RootElement,
         JsonElement element => element.Clone(),
         JsonNode node => JsonDocument.Parse(node.ToJsonString()).RootElement,
-        _ => JsonSerializer.SerializeToElement(value, DshJson.Options),
+        _ => DshJson.ToElementRuntime(value),
     };
 
     private static Dictionary<string, object?> ProjectResult(ToolExecutionResult result)
@@ -296,7 +291,7 @@ public sealed class ToolRuntime : Service
         JsonObject existing => (JsonObject)existing.DeepClone(),
         JsonNode node => JsonNode.Parse(node.ToJsonString())!.AsObject(),
         JsonElement element => JsonNode.Parse(element.GetRawText())!.AsObject(),
-        _ => JsonSerializer.SerializeToNode(value, DshJson.Options)!.AsObject(),
+        _ => DshJson.ToNodeRuntime(value)!.AsObject(),
     };
 
     public ToolExecutionModeKind ExecutionModeKind(ToolExecutionInput exec)
@@ -382,7 +377,7 @@ public sealed class ToolRuntime : Service
         {
             var carrier = DshScope.ScopeTarget(Ctx, exec.Agent?.ScopeKey);
             var gate = NormalizePreDecision(await Ctx.Events.Waterfall(
-                carrier, PreExecuteEvent, [exec],
+                carrier, new ToolPreExecuteNotification(exec),
                 () => new ValueTask<object?>(new PreToolDecision.Allow())));
             var (decision, approvalCancelled) = gate is PreToolDecision.Ask ask
                 ? await ServiceAsk(exec, ask)
@@ -456,7 +451,7 @@ public sealed class ToolRuntime : Service
         {
             var carrier = DshScope.ScopeTarget(Ctx, exec.Agent?.ScopeKey);
             var result = await Ctx.Events.Waterfall(
-                carrier, ExecuteEvent, [exec],
+                carrier, new ToolExecuteNotification(exec),
                 async () => await DispatchToolBody(exec)) as ToolExecutionResult
                 ?? throw new InvalidOperationException("tools/execute waterfall returned no result");
             var normalized = NormalizeDispatchResult(exec, result);
@@ -507,14 +502,14 @@ public sealed class ToolRuntime : Service
     private void NotifyResult(ToolRunContext exec, ToolExecutionResult result)
     {
         var carrier = DshScope.ScopeTarget(Ctx, exec.Agent?.ScopeKey);
-        Ctx.Events.Emit(carrier, ResultEvent, exec, result);
+        Ctx.Events.Emit(carrier, new ToolResultNotification(exec, result));
     }
 
     private async Task<ToolExecutionResult> PostExecute(ToolRunContext exec, ToolExecutionResult result)
     {
         var carrier = DshScope.ScopeTarget(Ctx, exec.Agent?.ScopeKey);
         var decision = await Ctx.Events.Waterfall(
-            carrier, PostExecuteEvent, [exec, result],
+            carrier, new ToolPostExecuteNotification(exec, result),
             () => new ValueTask<object?>(new PostToolDecision.Accept())) as PostToolDecision ?? new PostToolDecision.Accept();
         switch (decision)
         {
@@ -669,7 +664,7 @@ public sealed class ToolRuntime : Service
             {
                 null => JsonDocument.Parse("null").RootElement,
                 JsonElement element => element.Clone(),
-                _ => JsonSerializer.SerializeToElement(candidate, DshJson.Options),
+                _ => DshJson.ToElementRuntime(candidate),
             };
         }
         catch (Exception error)

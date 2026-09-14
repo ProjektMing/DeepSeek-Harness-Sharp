@@ -212,7 +212,7 @@ public sealed class JsonRpcLineTransport : IJsonRpcPeer, IAsyncDisposable
 
     private void WriteFrame(IReadOnlyDictionary<string, object?> frame)
     {
-        var line = JsonSerializer.Serialize(frame, DshJson.Options);
+        var line = DshJson.Serialize(frame);
         lock (_writeLock)
         {
             _output.WriteLine(line);

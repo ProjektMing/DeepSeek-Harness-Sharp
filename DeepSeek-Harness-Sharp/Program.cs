@@ -1,7 +1,4 @@
-using System.Diagnostics;
 using Dsh.Boot;
-using Dsh.Runtime;
-using Dsh.Boot.Profiles;
 
 namespace DeepSeek_Harness_Sharp;
 
@@ -9,34 +6,19 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        // 静态引用生成目录:裁剪/AOT 下插件程序集随 typeof 引用进入产物;JIT 下与目录扫描等价。
         Dsh.Launcher.PluginRoot.EnsureRooted();
 
-        if (args.Length > 0 && args[0] == "plugin")
-            return await RunPlugin(HarnessHome.Resolve(FindHomeArg(args)), args[1..]);
-
-        string? profile = null;
-        string? patch = null;
         string? home = null;
-        string? config = null;
         var dumpConfig = false;
         var dumpDefaultConfig = false;
-        var useTmux = false;
         var positional = new List<string>();
         for (var index = 0; index < args.Length; index++)
         {
             switch (args[index])
             {
-                case "--profile" when index + 1 < args.Length:
-                    profile = args[++index];
-                    break;
-                case "--patch" when index + 1 < args.Length:
-                    patch = args[++index];
-                    break;
                 case "--home" when index + 1 < args.Length:
                     home = args[++index];
-                    break;
-                case "--config" when index + 1 < args.Length:
-                    config = args[++index];
                     break;
                 case "--dump-config":
                     dumpConfig = true;
@@ -44,210 +26,90 @@ public static class Program
                 case "--dump-default-config":
                     dumpDefaultConfig = true;
                     break;
-                case "--tmux":
-                    useTmux = true;
+                case "--gpu":
                     break;
                 case "--help" or "-h":
                     PrintUsage();
                     return 0;
-                case "web":
-                    profile = "web";
-                    break;
-                case "tui":
-                    profile = "tui";
-                    break;
-                case "acp":
-                    profile = "acp";
-                    break;
-                case "lsp":
-                    profile = "lsp";
-                    break;
                 default:
                     positional.Add(args[index]);
                     break;
             }
         }
-        if (profile == "tui")
-        {
-            if (positional.FirstOrDefault() == "list")
-                return await BootCli.RunTuiListAsync();
-            if (positional.FirstOrDefault() == "attach")
-            {
-                if (positional.Count < 2)
-                {
-                    Console.Error.WriteLine("dsh: tui attach requires a session id");
-                    return 1;
-                }
-
-                return await BootCli.RunTuiAttachAsync(positional[1]);
-            }
-
-            if (positional.FirstOrDefault() == "daemon")
-                return await BootCli.RunTuiDaemonAsync();
-        }
-
-        if (useTmux && Environment.GetEnvironmentVariable("TMUX") is null)
-            return StartInTmux(args);
-
-        // stdin 与 stdout 均被重定向时按 ACP agent 运行,供 ACP client 以子进程方式拉起
-        profile ??= Console.IsInputRedirected && Console.IsOutputRedirected ? "acp" : null;
 
         var harnessHome = HarnessHome.Resolve(home);
         if (dumpDefaultConfig)
         {
-            foreach (var name in ProfileTemplates.Names)
+            foreach (var name in PluginManifest.LoadDefaults().Keys)
                 Console.WriteLine(name);
             return 0;
         }
-        IReadOnlyList<Dictionary<string, object?>>? patches;
-        try
-        {
-            patches = patch is null ? null : ConfigBoot.LoadPatches(patch);
-        }
-        catch (RuntimeException error)
-        {
-            Console.Error.WriteLine($"dsh: {error.Message}");
-            return 1;
-        }
         if (dumpConfig)
         {
+            var settings = HarnessSettings.Load(harnessHome);
+            var plugins = PluginManifest.Merge(PluginManifest.LoadDefaults(), settings.Plugins);
             Console.WriteLine($"dsh-home: {harnessHome.Root}");
             Console.WriteLine($"provider: {HarnessComposer.DefaultProvider}");
             Console.WriteLine($"model: {HarnessComposer.DefaultModel}");
+            foreach (var (name, setting) in plugins)
+                Console.WriteLine($"plugin: {name} (enabled={setting.Enabled})");
             return 0;
         }
 
-        string? bootConfig = config;
-        IReadOnlyList<Dictionary<string, object?>>? bootPatches = patches;
-        if (config is null && profile is not null)
+        var command = positional.FirstOrDefault();
+        switch (command)
         {
-            (bootConfig, bootPatches) = ConfigBoot.PrepareProfile(harnessHome, profile, patches);
-        }
-
-        switch (profile)
-        {
-            case null:
             case "tui":
-            case "web":
-            case "acp":
-            case "lsp":
             {
-                if (profile == "tui" && IsGpuRequested())
+                var subcommand = positional.Skip(1).FirstOrDefault();
+                if (subcommand == "list")
+                    return await BootCli.RunTuiListAsync();
+                if (subcommand == "attach")
                 {
-                    using var gpuApp = ComposeEntrypointApp(harnessHome, bootConfig, bootPatches).GetAwaiter().GetResult();
-                    return PluginEntrypointRegistry.RunAsync("tui", gpuApp, new PluginEntrypointOptions(
-                        harnessHome, Directory.GetCurrentDirectory(), bootConfig, bootPatches)).GetAwaiter().GetResult();
+                    if (positional.Count < 3)
+                    {
+                        await Console.Error.WriteLineAsync("dsh: tui attach requires a session id");
+                        return 1;
+                    }
+                    return await BootCli.RunTuiAttachAsync(positional[2]);
                 }
-
-                using var app = await ComposeEntrypointApp(harnessHome, bootConfig, bootPatches);
-                return await PluginEntrypointRegistry.RunAsync(profile ?? "web", app, new PluginEntrypointOptions(
-                    harnessHome, Directory.GetCurrentDirectory(), bootConfig, bootPatches));
+                if (subcommand == "daemon")
+                    return await BootCli.RunTuiDaemonAsync();
+                return await RunEntrypointAsync(harnessHome, "tui", "@deepseek-ai/dsh-tui");
             }
+            case "gui":
+                return await RunEntrypointAsync(harnessHome, "gui", "@deepseek-ai/dsh-gui");
             case "headless":
-                return await BootCli.RunHeadlessAsync(harnessHome, string.Join(' ', positional), bootConfig, bootPatches);
-            case "sdk" or "sdk-minimal":
-                return await BootCli.RunSdkAsync(harnessHome, bootConfig, bootPatches);
+                return await BootCli.RunHeadlessAsync(harnessHome, string.Join(' ', positional.Skip(1)));
+            case null:
+                return await RunEntrypointAsync(harnessHome, "tui", "@deepseek-ai/dsh-tui");
             default:
-                Console.Error.WriteLine($"dsh: unknown profile \"{profile}\"");
-                return 1;
+                return await BootCli.RunHeadlessAsync(harnessHome, string.Join(' ', positional));
         }
-    }
-
-    private static bool IsGpuRequested()
-    {
-        if (string.Equals(Environment.GetEnvironmentVariable("DSH_TUI_GPU"), "1", StringComparison.Ordinal))
-            return true;
-        var args = Environment.GetCommandLineArgs();
-        return args.Any(argument => string.Equals(argument, "--gpu", StringComparison.Ordinal));
     }
 
     private static void PrintUsage()
     {
         Console.WriteLine("""
             Usage: dsh [options] [task...]
+                   dsh tui [list | attach <id>]
+                   dsh gui
+                   dsh headless "task"
 
             Options:
-              --profile <name>   headless | tui | web | sdk | acp | lsp | sdk-minimal (default: web)
-              --config <path>    boot from a cordis.yml composition instead of the built-in defaults
               --home <path>      harness home (default: $DSH_HOME or ~/.dsh)
-              --dump-config      print the composed configuration and exit
+              --gpu              run the TUI with the GPU renderer
+              --dump-config      print the resolved harness configuration and exit
               --dump-default-config
-                                 print the built-in profile template names and exit
+                                 print the default plugin manifest and exit
               -h, --help         show this help
-
-            Commands:
-              tui                start the terminal UI
-              headless "task"    answer one task and exit
             """);
     }
 
-    private static string? FindHomeArg(string[] args)
+    private static async Task<int> RunEntrypointAsync(HarnessHome home, string entrypoint, string entrypointPlugin)
     {
-        for (var index = 0; index < args.Length - 1; index++)
-        {
-            if (args[index] == "--home")
-                return args[index + 1];
-        }
-        return null;
-    }
-
-    private static async Task<int> RunPlugin(HarnessHome home, string[] args)
-    {
-        string? profile = null;
-        var pnpmArgs = new List<string>();
-        for (var index = 0; index < args.Length; index++)
-        {
-            if (args[index] == "--profile" && index + 1 < args.Length)
-            {
-                profile = args[++index];
-            }
-            else
-            {
-                pnpmArgs.Add(args[index]);
-            }
-        }
-        profile ??= "tui";
-        if ((pnpmArgs.FirstOrDefault() is "add" or "remove")
-            && !pnpmArgs.Contains("-w")
-            && !pnpmArgs.Contains("--workspace-root"))
-        {
-            pnpmArgs.Insert(1, "-w");
-        }
-        ProfileStore.InitProfile(home, profile);
-        var workingDirectory = ProfileStore.ResolveProfileDir(home, profile);
-        var startInfo = new ProcessStartInfo("pnpm")
-        {
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-        };
-        foreach (var argument in pnpmArgs)
-            startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo);
-        if (process is null)
-            return 1;
-        await process.WaitForExitAsync();
-        return process.ExitCode;
-    }
-
-    private static async Task<HarnessApp> ComposeEntrypointApp(
-        HarnessHome home,
-        string? config,
-        IReadOnlyList<Dictionary<string, object?>>? patches)
-    {
-        var options = new HarnessOptions(home, Directory.GetCurrentDirectory());
-        return config is null
-            ? await HarnessComposer.Compose(options)
-            : await ConfigBoot.Compose(config, options, patches: patches);
-    }
-
-    private static int StartInTmux(string[] args)
-    {
-        var relaunchArgs = args.Where(argument => argument != "--tmux").ToArray();
-        var dotnet = Environment.ProcessPath ?? "dotnet";
-        var assembly = Environment.GetCommandLineArgs()[0];
-        var command = $"{dotnet} \"{assembly}\" {string.Join(' ', relaunchArgs)}";
-        Process.Start("tmux", ["new-session", "-d", "-s", "dsh", command]);
-        Process.Start("tmux", ["attach", "-t", "dsh"]).WaitForExit();
-        return 0;
+        var options = new HarnessOptions(home, Directory.GetCurrentDirectory(), IsTui: entrypoint == "tui", EntrypointPlugin: entrypointPlugin);
+        using var app = await ConfigBoot.Compose(options);
+        return await PluginEntrypointRegistry.RunAsync(entrypoint, app, new PluginEntrypointOptions(home, Directory.GetCurrentDirectory()));
     }
 }

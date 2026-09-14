@@ -12,7 +12,7 @@ public sealed record HarnessHome(string Root)
 
     public string SessionsPath => SubPath("sessions");
 
-    public string ProfilesPath => SubPath("profiles");
+    public string LogsPath => SubPath("logs");
 
     public string AgentPresetsPath => SubPath(".agent-presets");
 

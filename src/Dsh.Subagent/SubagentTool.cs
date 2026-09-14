@@ -2,6 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -64,17 +65,15 @@ public static class SubagentTool
             AssertProviderConfiguration(config, provider, continuable);
             mount.Set(provider, tools.Register(BuildDefinition(ctx, config, provider)));
         }
-        var removeAdded = ctx.On(SubagentRuntime.ProviderAddedEvent, (_, args) =>
+        var removeAdded = ctx.On<SubagentProviderAddedNotification>(notification =>
         {
-            if (args[0] is ISubagentProvider provider && provider.Name == config.Provider && !ReferenceEquals(mount.Provider, provider))
-                Mount(provider);
-            return new ValueTask<object?>();
+            if (notification.Provider.Name == config.Provider && !ReferenceEquals(mount.Provider, notification.Provider))
+                Mount(notification.Provider);
         });
-        var removeRemoved = ctx.On(SubagentRuntime.ProviderRemovedEvent, (_, args) =>
+        var removeRemoved = ctx.On<SubagentProviderRemovedNotification>(notification =>
         {
-            if (args[0] is string name && name == config.Provider)
+            if (notification.Name == config.Provider)
                 mount.Clear();
-            return new ValueTask<object?>();
         });
         var initial = subagents.GetProvider(config.Provider);
         if (initial is not null)
@@ -322,7 +321,7 @@ public static class SubagentTool
     {
         var array = new JsonArray();
         foreach (var block in output)
-            array.Add(JsonSerializer.SerializeToNode(block, DshJson.Options));
+            array.Add(DshJson.ToNode(block));
         return array;
     }
 

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Acp;
 using Dsh.Core;
 using Dsh.Interaction;
@@ -109,8 +110,8 @@ public sealed class AcpClientTests
             },
             IsConcurrencySafe = _ => true,
         });
-        fixture.Ctx.On(ToolRuntime.PreExecuteEvent, (_, _) =>
-            new ValueTask<object?>(new PreToolDecision.Ask()), new EventOptions { Global = true });
+        fixture.Ctx.OnWaterfall<ToolPreExecuteNotification>((_, _) =>
+            ValueTask.FromResult<object?>(new PreToolDecision.Ask()), new EventOptions { Global = true });
 
         var pair = new DuplexTransportPair();
         await using var serverTransport = pair.Server;

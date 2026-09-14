@@ -1,4 +1,5 @@
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Plugins;
 
 [assembly: DshPlugin("test/local")]
@@ -38,15 +39,23 @@ public sealed class PluginHostTests
     }
 }
 
+public sealed record ThirdPartyNotification(string Text) : INotification
+{
+    public static string EventName => "third-party/notification";
+}
+
 public sealed class TestPlugin : IDshPlugin
 {
     public static bool Applied { get; set; }
+    public static string? ReceivedText { get; set; }
 
     public string[] Inject => [];
 
     public IDisposable Apply(Context ctx, object? config)
     {
         Applied = true;
+        ctx.On<ThirdPartyNotification>(notification => ReceivedText = notification.Text);
+        ctx.Emit(new ThirdPartyNotification("third-party-hello"));
         return new NoopDisposable();
     }
 

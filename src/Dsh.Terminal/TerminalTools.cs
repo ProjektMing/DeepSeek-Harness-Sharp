@@ -448,7 +448,7 @@ public static class TerminalTools
             Description = ListDescription,
             Parameters = ParseSchema("""{ "type": "object", "additionalProperties": false, "properties": {} }"""),
             Output = new ToolOutputDefinition(ListOutputSchema, (_, value) =>
-                [new TextBlock(TerminalRendering.RenderList(value.Deserialize<IReadOnlyList<TerminalSessionSnapshot>>(DshJson.Options) ?? [], maxResultBytes))]),
+                [new TextBlock(TerminalRendering.RenderList(DshJson.Deserialize<IReadOnlyList<TerminalSessionSnapshot>>(value) ?? [], maxResultBytes))]),
             FinalizeContent = FinalizeContent,
             Execute = (_, exec) => Task.FromResult<object?>(terminals.List(RequireAgent(exec.Agent))),
         }));
@@ -517,7 +517,7 @@ public static class TerminalTools
         => new(
             value.GetProperty("viewport").GetString() ?? "",
             ParseWaitReason(value.GetProperty("waitReason").GetString() ?? ""),
-            value.GetProperty("sessionStatus").Deserialize<TerminalSessionStatus>(DshJson.Options)
+            DshJson.Deserialize<TerminalSessionStatus>(value.GetProperty("sessionStatus"))
                 ?? TerminalSessionStatus.Running(),
             value.GetProperty("truncated").GetBoolean());
 
@@ -531,7 +531,7 @@ public static class TerminalTools
     };
 
     private static T Deserialize<T>(JsonElement value)
-        => value.Deserialize<T>(DshJson.Options) ?? throw new JsonException($"terminal result value is malformed for {typeof(T).Name}");
+        => DshJson.Deserialize<T>(value) ?? throw new JsonException($"terminal result value is malformed for {typeof(T).Name}");
 
     private static JsonObject ParseSchema(string json) => JsonNode.Parse(json)!.AsObject();
 

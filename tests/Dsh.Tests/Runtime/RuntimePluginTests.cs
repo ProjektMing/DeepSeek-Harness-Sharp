@@ -1,4 +1,5 @@
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 
 namespace Dsh.Tests.Runtime;
 
@@ -75,7 +76,7 @@ public class RuntimePluginTests
         var activation = ctx.Plugin(definition);
         await activation.WaitAsync();
         Assert.Equal(ActivationState.Failed, activation.State);
-        Assert.IsType<InvalidOperationException>(activation.Error);
+        Assert.Equal("boom", activation.Error);
         Assert.Contains(ctx.Root.Logger.Buffer, message => message.Type == LoggerType.Error);
     }
 
@@ -87,22 +88,18 @@ public class RuntimePluginTests
         var definition = PluginDefinition.From((pluginCtx, _) =>
         {
             pluginCtx.Provide("service", "value");
-            pluginCtx.On("ping", (_, _) =>
-            {
-                received++;
-                return new ValueTask<object?>();
-            });
+            pluginCtx.On<PingNotification>(_ => received++);
             return null;
         }, "owner");
         var activation = ctx.Plugin(definition);
         await activation.WaitAsync();
 
-        ctx.Emit("ping");
+        ctx.Emit(new PingNotification(1));
         Assert.Equal(1, received);
         Assert.NotNull(ctx.Get("service"));
 
         await activation.DeactivateAsync();
-        ctx.Emit("ping");
+        ctx.Emit(new PingNotification(2));
         Assert.Equal(1, received);
         Assert.Null(ctx.Get("service"));
     }

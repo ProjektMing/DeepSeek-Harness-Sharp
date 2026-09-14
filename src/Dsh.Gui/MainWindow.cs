@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Interaction;
@@ -129,17 +130,15 @@ public sealed class MainWindow : Window
 
     private void Subscribe()
     {
-        _unsubscribers.Add(_ctx.On(SessionStore.EventEvent, (_, args) =>
+        _unsubscribers.Add(_ctx.On<SessionEventNotification>(notification =>
         {
-            if (!ReferenceEquals(args[0], _agent.Session))
-                return new ValueTask<object?>();
-            var sessionEvent = (SessionEvent)args[1]!;
-            QueueSessionEvent(sessionEvent);
-            return new ValueTask<object?>();
+            if (!ReferenceEquals(notification.Session, _agent.Session))
+                return;
+            QueueSessionEvent(notification.Event);
         }));
-        _unsubscribers.Add(_ctx.On(ApprovalEvents.Request, (_, args) =>
+        _unsubscribers.Add(_ctx.OnWaterfall<ApprovalRequestNotification>((notification, _) =>
         {
-            var request = (ApprovalRequest)args[0]!;
+            var request = notification.Request;
             var answer = new TaskCompletionSource<ApprovalOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
             Dispatcher.UIThread.Post(() => ShowApprovalPrompt(request, answer));
             return new ValueTask<object?>(answer.Task);

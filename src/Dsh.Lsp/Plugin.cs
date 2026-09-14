@@ -1,7 +1,5 @@
 using Dsh.Runtime;
-using Dsh.Boot;
 using Dsh.Plugins;
-using Dsh.Sdk;
 
 [assembly: DshPlugin("@deepseek-ai/dsh-lsp")]
 
@@ -11,23 +9,7 @@ public sealed class Plugin : IDshPlugin
 {
     public string[] Inject => [];
 
-    public IDisposable Apply(Context ctx, object? config)
-    {
-        PluginEntrypointRegistry.Register("lsp",
-            static (_, _, cancellationToken) => RunAsync(cancellationToken));
-        return new CallbackDisposable();
-    }
-
-    private static async Task<int> RunAsync(CancellationToken cancellationToken)
-    {
-        var transport = new JsonRpcLineTransport(Console.In, Console.Out);
-        var server = new LspServer();
-        transport.RequestHandler = server.HandleRequestAsync;
-        transport.Start();
-        await transport.WhenClosedAsync().WaitAsync(cancellationToken);
-        await transport.DisposeAsync();
-        return 0;
-    }
+    public IDisposable Apply(Context ctx, object? config) => new CallbackDisposable();
 
     private sealed class CallbackDisposable : IDisposable
     {

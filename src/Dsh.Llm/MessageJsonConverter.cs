@@ -11,9 +11,9 @@ public sealed class MessageJsonConverter : JsonConverter<Message>
         var root = doc.RootElement;
         var id = MessageId.Create(root.GetProperty("id").GetString() ?? throw new JsonException("message missing id"));
         var roleText = root.GetProperty("role").GetString() ?? throw new JsonException("message missing role");
-        var content = root.GetProperty("content").Deserialize<IReadOnlyList<ContentBlock>>(options)
+        var content = DshJson.Deserialize<IReadOnlyList<ContentBlock>>(root.GetProperty("content"))
             ?? throw new JsonException("message missing content");
-        var source = root.GetProperty("source").Deserialize<MessageSource>(options)
+        var source = DshJson.Deserialize<MessageSource>(root.GetProperty("source"))
             ?? throw new JsonException("message missing source");
         var role = roleText switch
         {
@@ -47,9 +47,9 @@ public sealed class MessageJsonConverter : JsonConverter<Message>
             _ => throw new JsonException($"unknown message role {value.Role}"),
         });
         writer.WritePropertyName("content");
-        JsonSerializer.Serialize(writer, value.Content, options);
+        DshJson.Serialize(writer, value.Content);
         writer.WritePropertyName("source");
-        JsonSerializer.Serialize(writer, value.Source, options);
+        DshJson.Serialize(writer, value.Source);
         writer.WriteEndObject();
     }
 }

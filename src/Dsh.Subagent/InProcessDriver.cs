@@ -1,4 +1,5 @@
 ﻿using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -32,7 +33,7 @@ public static class InProcessDriver
             LastTurnOf);
         (parent.Ctx.Get(SubagentRuntime.ServiceName, false) as SubagentRuntime)?.NoteChildScope(child.ScopeKey);
         var run = new InProcessRun(child, activationBoundary, request, inherited);
-        parent.Ctx.Root.Emit(AgentEventNames.SessionStart, new { Agent = (IAgent)child, Source = "startup" });
+        parent.Ctx.Root.Emit(new AgentSessionStartNotification(child, "startup"));
         return Task.FromResult<ISubagentRun>(run);
     }
 
@@ -148,9 +149,8 @@ public static class InProcessDriver
         private void AttachDescriptorAppend(Context childCtx, Session session, SubagentDescriptorPayload descriptor)
         {
             var appended = false;
-            _composition.Add(new FuncDispose(childCtx.On(AgentEventNames.PreStep, async (_, args) =>
+            _composition.Add(new FuncDispose(childCtx.OnWaterfall<AgentPreStepNotification>(async (_, next) =>
             {
-                var next = (Func<ValueTask<object?>>)args[^1]!;
                 var decision = await next();
                 if (!appended && decision is PreStepDecision.Enter)
                 {

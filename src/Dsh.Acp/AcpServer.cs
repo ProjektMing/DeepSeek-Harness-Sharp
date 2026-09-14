@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 using Dsh.Sdk;
@@ -35,16 +36,15 @@ public sealed class AcpServer
         _provider = provider;
         _model = model;
         _installAgentHooks = installAgentHooks;
-        _disposers.Add(ctx.On(SessionStore.EventEvent, (_, args) =>
+        _disposers.Add(ctx.On<Dsh.Core.SessionEventNotification>(notification =>
         {
-            var session = (Session)args[0]!;
-            var sessionEvent = (SessionEvent)args[1]!;
+            var session = notification.Session;
+            var sessionEvent = notification.Event;
             if (_sessions.TryGetValue(session.Id.Value, out var record)
                 && ReferenceEquals(record.Agent.Session, session))
             {
                 EmitSessionUpdate(session, sessionEvent);
             }
-            return new ValueTask<object?>();
         }, new EventOptions { Global = true }));
     }
 
@@ -345,6 +345,6 @@ public sealed class AcpServer
 
     private static T Deserialize<T>(JsonElement? element) where T : class
         => element is { } value
-            ? value.Deserialize<T>(DshJson.Options) ?? throw new JsonException($"invalid {typeof(T).Name} params")
+            ? DshJson.Deserialize<T>(value) ?? throw new JsonException($"invalid {typeof(T).Name} params")
             : throw new JsonException($"missing {typeof(T).Name} params");
 }

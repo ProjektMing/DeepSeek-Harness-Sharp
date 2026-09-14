@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Dsh.Runtime.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace Dsh.Runtime;
 
@@ -27,74 +29,48 @@ public sealed record Message
     public required string Name { get; init; }
     public LoggerType Type { get; init; }
     public int Level { get; init; }
-    public required object?[] Args { get; init; }
+    public required string Text { get; init; }
 }
 
-internal sealed class LoggerState
-{
-    public readonly List<Message> Buffer = [];
-    public readonly Lock Sync = new();
-    public long Sn;
-    public int BufferSize = 1000;
-
-    public void Append(Message message)
-    {
-        lock (Sync)
-        {
-            Buffer.Add(message);
-            var overflow = Buffer.Count - BufferSize;
-            if (overflow > 0)
-                Buffer.RemoveRange(0, overflow);
-        }
-    }
-}
-
-public sealed class Logger
+public sealed partial class Logger
 {
     public const int DefaultMaxLength = 10240;
 
-    private static readonly Regex Placeholder = new("%([a-zA-Z%])", RegexOptions.Compiled);
+    [GeneratedRegex("%([a-zA-Z%])")]
+    private static partial Regex Placeholder();
 
     public string Name { get; }
-    private readonly LoggerState _state;
+    private readonly ILogger _logger;
 
-    internal Logger(string name, LoggerState state)
+    internal Logger(string name, ILogger logger)
     {
         Name = name;
-        _state = state;
+        _logger = logger;
     }
 
-    public void Error(object? format, params object?[] args) => Log(LoggerType.Error, LoggerLevel.Error, format, args);
-    public void Warn(object? format, params object?[] args) => Log(LoggerType.Warn, LoggerLevel.Warn, format, args);
-    public void Info(object? format, params object?[] args) => Log(LoggerType.Info, LoggerLevel.Info, format, args);
-    public void Debug(object? format, params object?[] args) => Log(LoggerType.Debug, LoggerLevel.Debug, format, args);
+    public void Error(object? format, params object?[] args) => Log(LogLevel.Error, format, args);
+    public void Warn(object? format, params object?[] args) => Log(LogLevel.Warning, format, args);
+    public void Info(object? format, params object?[] args) => Log(LogLevel.Information, format, args);
+    public void Debug(object? format, params object?[] args) => Log(LogLevel.Debug, format, args);
 
-    private void Log(LoggerType type, int level, object? format, object?[] args)
+    private void Log(LogLevel level, object? format, object?[] args)
     {
         var allArgs = format is null ? args : [format, .. args];
         if (allArgs.Length == 1 && allArgs[0] is AggregateException aggregate)
         {
             foreach (var inner in aggregate.InnerExceptions)
-                Log(type, level, inner, []);
+                Log(level, inner, []);
             return;
         }
-        long sn;
-        lock (_state.Sync)
-            sn = ++_state.Sn;
-        _state.Append(new Message
-        {
-            Sn = sn,
-            Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            Type = type,
-            Level = level,
-            Name = Name,
-            Args = allArgs,
-        });
+        if (!_logger.IsEnabled(level))
+            return;
+        var text = FormatText(allArgs);
+        _logger.Log(level, 0, text, null, static (state, _) => state);
     }
 
-    public static string Format(Message message)
+    internal static string FormatText(object?[] allArgs)
     {
-        var args = message.Args.ToList();
+        var args = allArgs.ToList();
         if (args.Count > 0 && args[0] is Exception error)
         {
             args[0] = error.ToString();
@@ -107,7 +83,7 @@ public sealed class Logger
 
         var format = (string)args[0]!;
         args.RemoveAt(0);
-        format = Placeholder.Replace(format, match =>
+        format = Placeholder().Replace(format, match =>
         {
             if (match.Value == "%%")
                 return "%";
@@ -143,34 +119,29 @@ public sealed class Logger
 public sealed class LoggerService
 {
     private readonly Context _ctx;
-    private readonly LoggerState _state;
+    private readonly LoggingSetup _logging;
 
-    internal LoggerService(Context ctx, LoggerState state)
+    internal LoggerService(Context ctx, LoggingSetup logging)
     {
         _ctx = ctx;
-        _state = state;
+        _logging = logging;
     }
+
+    public ILoggerFactory Factory => _logging.Factory;
 
     public int BufferSize
     {
-        get => _state.BufferSize;
-        set => _state.BufferSize = value;
+        get => _logging.Memory.BufferSize;
+        set => _logging.Memory.BufferSize = value;
     }
 
-    public IReadOnlyList<Message> Buffer
-    {
-        get
-        {
-            lock (_state.Sync)
-                return [.. _state.Buffer];
-        }
-    }
+    public IReadOnlyList<Message> Buffer => _logging.Memory.Snapshot();
 
     public Logger Invoke(string? name = null, Context? caller = null)
     {
         var fiber = caller ?? _ctx;
         name ??= Hyphenate(fiber.Activation.Name);
-        return new Logger(name, _state);
+        return new Logger(name, _logging.Factory.CreateLogger(name));
     }
 
     public void Error(object? format, params object?[] args) => Invoke().Error(format, args);

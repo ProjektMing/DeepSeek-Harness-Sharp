@@ -54,7 +54,7 @@ public sealed class FinishReasonJsonConverter : JsonConverter<FinishReason>
         using var doc = JsonDocument.ParseValue(ref reader);
         var root = doc.RootElement;
         var kind = root.GetProperty("kind").GetString() ?? throw new JsonException("finish reason missing \"kind\"");
-        LlmFailure Failure() => root.GetProperty("failure").Deserialize<LlmFailure>(options)
+        LlmFailure Failure() => DshJson.Deserialize<LlmFailure>(root.GetProperty("failure"))
             ?? throw new JsonException("finish reason missing failure");
         return kind switch
         {
@@ -80,11 +80,11 @@ public sealed class FinishReasonJsonConverter : JsonConverter<FinishReason>
         {
             case FinishReason.Aborted aborted:
                 writer.WritePropertyName("failure");
-                JsonSerializer.Serialize(writer, aborted.Failure, options);
+                DshJson.Serialize(writer, aborted.Failure);
                 break;
             case FinishReason.Error error:
                 writer.WritePropertyName("failure");
-                JsonSerializer.Serialize(writer, error.Failure, options);
+                DshJson.Serialize(writer, error.Failure);
                 break;
         }
         writer.WriteEndObject();
@@ -152,15 +152,15 @@ public sealed class StreamChunkJsonConverter : JsonConverter<StreamChunk>
                 ToolCallId.Create(root.GetProperty("id").GetString() ?? throw new JsonException("tool-call-delta missing id")),
                 root.TryGetProperty("name", out var name) ? name.GetString() : null,
                 root.GetProperty("argumentsDelta").GetString() ?? ""),
-            "block-end" => new StreamChunk.BlockEnd(Index(), root.GetProperty("block").Deserialize<ContentBlock>(options)
+            "block-end" => new StreamChunk.BlockEnd(Index(), DshJson.Deserialize<ContentBlock>(root.GetProperty("block"))
                 ?? throw new JsonException("block-end missing block")),
-            "usage" => new StreamChunk.Usage(root.GetProperty("usage").Deserialize<TokenUsage>(options)
+            "usage" => new StreamChunk.Usage(DshJson.Deserialize<TokenUsage>(root.GetProperty("usage"))
                 ?? throw new JsonException("usage chunk missing usage")),
             "finish" => new StreamChunk.Finish(
-                root.GetProperty("reason").Deserialize<FinishReason>(options)
+                DshJson.Deserialize<FinishReason>(root.GetProperty("reason"))
                     ?? throw new JsonException("finish chunk missing reason"),
                 root.TryGetProperty("replayState", out var replay)
-                    ? replay.Deserialize<ReplayEnvelope>(options) : null),
+                    ? DshJson.Deserialize<ReplayEnvelope>(replay) : null),
             _ => throw new JsonException($"unknown stream chunk type \"{type}\""),
         };
     }
@@ -193,19 +193,19 @@ public sealed class StreamChunkJsonConverter : JsonConverter<StreamChunk>
             case StreamChunk.BlockEnd blockEnd:
                 writer.WriteNumber("index", blockEnd.Index);
                 writer.WritePropertyName("block");
-                JsonSerializer.Serialize(writer, blockEnd.Block, options);
+                DshJson.Serialize(writer, blockEnd.Block);
                 break;
             case StreamChunk.Usage usage:
                 writer.WritePropertyName("usage");
-                JsonSerializer.Serialize(writer, usage.Value, options);
+                DshJson.Serialize(writer, usage.Value);
                 break;
             case StreamChunk.Finish finish:
                 writer.WritePropertyName("reason");
-                JsonSerializer.Serialize(writer, finish.Reason, options);
+                DshJson.Serialize(writer, finish.Reason);
                 if (finish.ReplayState is { } replay)
                 {
                     writer.WritePropertyName("replayState");
-                    JsonSerializer.Serialize(writer, replay, options);
+                    DshJson.Serialize(writer, replay);
                 }
                 break;
         }

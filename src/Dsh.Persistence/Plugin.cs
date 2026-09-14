@@ -1,4 +1,5 @@
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;
@@ -40,41 +41,34 @@ public sealed class Plugin(string packageName) : IDshPlugin
     internal static IDisposable WirePersistence(Context ctx, ISessionPersistence persistence)
     {
         var handles = new Dictionary<SessionId, ISessionHandle>();
-        var created = ctx.On(SessionStore.CreatedEvent, (_, args) =>
+        var created = ctx.On<SessionCreatedNotification>(notification =>
         {
-            var session = (Session)args[0]!;
+            var session = notification.Session;
             if (handles.ContainsKey(session.Id))
-                return new ValueTask<object?>();
+                return;
             var handle = persistence.Create(session.Header, session.InheritedEventCount);
             handles[session.Id] = handle;
             var seed = session.SnapshotEvents();
             if (seed.Count > 0)
                 handle.Append(seed);
-            return new ValueTask<object?>();
         });
-        var eventHandler = ctx.On(SessionStore.EventEvent, (_, args) =>
+        var eventHandler = ctx.On<SessionEventNotification>(notification =>
         {
-            var session = (Session)args[0]!;
-            if (handles.TryGetValue(session.Id, out var handle))
-                handle.Append([(SessionEvent)args[1]!]);
-            return new ValueTask<object?>();
+            if (handles.TryGetValue(notification.Session.Id, out var handle))
+                handle.Append([notification.Event]);
         });
-        var flush = ctx.On(SessionStore.FlushEvent, (_, args) =>
+        var flush = ctx.On<SessionFlushNotification>(notification =>
         {
-            var session = (Session)args[0]!;
-            if (handles.TryGetValue(session.Id, out var handle))
+            if (handles.TryGetValue(notification.Session.Id, out var handle))
                 handle.Flush();
-            return new ValueTask<object?>();
         });
-        var disposed = ctx.On(SessionStore.DisposedEvent, (_, args) =>
+        var disposed = ctx.On<SessionDisposedNotification>(notification =>
         {
-            var session = (Session)args[0]!;
-            if (handles.Remove(session.Id, out var handle))
+            if (handles.Remove(notification.Session.Id, out var handle))
             {
                 handle.Flush();
                 handle.Close();
             }
-            return new ValueTask<object?>();
         });
         return new DisposableBundle(
             new CallbackDisposable(() => created()),

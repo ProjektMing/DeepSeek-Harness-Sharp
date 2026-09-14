@@ -121,6 +121,8 @@ public static class PtyDaemonClient
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        if (string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase))
+            startInfo.ArgumentList.Add(Environment.GetCommandLineArgs()[0]);
         startInfo.ArgumentList.Add("tui");
         startInfo.ArgumentList.Add("daemon");
         var process = Process.Start(startInfo);

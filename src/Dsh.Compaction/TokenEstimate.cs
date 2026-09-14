@@ -33,7 +33,7 @@ public static class TokenEstimate
             : (int)Math.Ceiling(text.Length / (double)FallbackCharsPerToken);
 
     public static int EstimateStructuralBlock(ContentBlock block)
-        => BlockOverhead + CountText(JsonSerializer.Serialize(block, DshJson.Options));
+        => BlockOverhead + CountText(DshJson.Serialize(block));
 
     public static int EstimateContent(IReadOnlyList<ContentBlock> blocks)
     {
@@ -67,7 +67,7 @@ public static class TokenEstimate
     public static int EstimateToolsTokens(EpochHeader? header)
         => header?.Tools is not { Count: > 0 } tools
             ? 0
-            : CountText(JsonSerializer.Serialize(tools, DshJson.Options)) + BlockOverhead;
+            : CountText(DshJson.Serialize(tools)) + BlockOverhead;
 
     public static int EstimateHeader(EpochHeader? header)
         => EstimateToolsTokens(header);

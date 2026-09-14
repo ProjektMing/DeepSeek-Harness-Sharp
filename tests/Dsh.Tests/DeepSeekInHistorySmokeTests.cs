@@ -10,10 +10,13 @@ public sealed class DeepSeekInHistorySmokeTests
     private static (DeepSeekAdapter Adapter, string Model)? ResolveRealAdapter()
     {
         var settings = HarnessSettings.Load(HarnessHome.Resolve());
-        if (!settings.Providers.TryGetValue("deepseek-official", out var provider))
+        var providerId = Environment.GetEnvironmentVariable("DSH_REAL_LLM_PROVIDER") ?? "deepseek-official";
+        if (!string.Equals(providerId, "deepseek-official", StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (!settings.Providers.TryGetValue(providerId, out var provider))
             return null;
         var apiKey = provider.Options?.ApiKey;
-        if (string.IsNullOrEmpty(apiKey) || apiKey == "sk-...")
+        if (string.IsNullOrEmpty(apiKey))
             return null;
         var model = provider.Models.Keys.FirstOrDefault() ?? "deepseek-v4-flash";
         var connection = new DeepSeekConnectionOptions(

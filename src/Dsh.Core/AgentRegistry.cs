@@ -102,7 +102,7 @@ public sealed class AgentRegistry(Context ctx) : Service(ctx, ServiceName)
         _agents[agent.Id] = agent;
         if (owner is not null)
             _owners[agent.Id] = owner;
-        Ctx.Emit(AgentEventNames.Created, new { Agent = agent });
+        Ctx.Emit(new AgentCreatedNotification(agent));
     }
 
     public IAgent? Get(SessionId id) => _agents.TryGetValue(id, out var agent) ? agent : null;
@@ -120,7 +120,7 @@ public sealed class AgentRegistry(Context ctx) : Service(ctx, ServiceName)
         if (_agents.Remove(id, out var agent))
         {
             _owners.Remove(id);
-            Ctx.Emit(AgentEventNames.Disposed, new { Agent = agent });
+            Ctx.Emit(new AgentDisposedNotification(agent));
         }
     }
 

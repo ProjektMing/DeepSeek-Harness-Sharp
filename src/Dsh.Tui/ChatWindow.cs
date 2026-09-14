@@ -1,4 +1,5 @@
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Interaction;
@@ -61,27 +62,24 @@ public sealed class ChatWindow : IDisposable
         SubscribeSessionRenamed();
         LoadSkillCandidates();
 
-        _unsubscribe = ctx.On(SessionStore.EventEvent, (_, args) =>
+        _unsubscribe = ctx.On<SessionEventNotification>(notification =>
         {
-            if (!ReferenceEquals(args[0], _agent.Session))
-                return new ValueTask<object?>();
-            var sessionEvent = (SessionEvent)args[1]!;
-            QueueSessionEvent(sessionEvent);
-            return new ValueTask<object?>();
+            if (!ReferenceEquals(notification.Session, _agent.Session))
+                return;
+            QueueSessionEvent(notification.Event);
         });
 
-        _approvalSubscription = ctx.On(ApprovalEvents.Request, (_, args) =>
+        _approvalSubscription = ctx.OnWaterfall<ApprovalRequestNotification>((notification, _) =>
         {
-            var request = (ApprovalRequest)args[0]!;
+            var request = notification.Request;
             var answer = new TaskCompletionSource<ApprovalOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
             QueueAction(() => ShowApprovalPrompt(request, answer));
             return new ValueTask<object?>(answer.Task);
         }, new EventOptions { Global = true });
 
-        _skillChangeSubscription = ctx.On(SkillRegistry.ChangeEvent, (_, _) =>
+        _skillChangeSubscription = ctx.On<SkillsChangedNotification>(_ =>
         {
             LoadSkillCandidates();
-            return new ValueTask<object?>();
         }, new EventOptions { Global = true });
     }
 
@@ -517,13 +515,11 @@ public sealed class ChatWindow : IDisposable
         _renderedSeq = 0;
         _scrollOffset = 0;
         _stickToBottom = true;
-        _unsubscribe = _ctx.On(SessionStore.EventEvent, (_, args) =>
+        _unsubscribe = _ctx.On<SessionEventNotification>(notification =>
         {
-            if (!ReferenceEquals(args[0], _agent.Session))
-                return new ValueTask<object?>();
-            var sessionEvent = (SessionEvent)args[1]!;
-            QueueSessionEvent(sessionEvent);
-            return new ValueTask<object?>();
+            if (!ReferenceEquals(notification.Session, _agent.Session))
+                return;
+            QueueSessionEvent(notification.Event);
         });
     }
 

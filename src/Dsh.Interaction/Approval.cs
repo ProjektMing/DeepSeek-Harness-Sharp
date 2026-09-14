@@ -1,6 +1,7 @@
 #pragma warning disable CA2255
 using System.Runtime.CompilerServices;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -17,7 +18,6 @@ public static class ApprovalEvents
     public const string Asked = "approval/asked";
     public const string Decided = "approval/decided";
     public const string Policy = "approval/policy";
-    public const string Request = "approval/request";
 }
 
 public sealed record ApprovalAskedPayload(string Id, string ToolName, ToolCallId? CallId = null, string? Reason = null)
@@ -125,7 +125,7 @@ public sealed class ApprovalService : Service, IApprovalService
         {
             var carrier = DshScope.ScopeTarget(Ctx, request.Agent.ScopeKey);
             var result = await Ctx.Events.Waterfall(
-                carrier, ApprovalEvents.Request, [request],
+                carrier, new ApprovalRequestNotification(request),
                 () => new ValueTask<object?>(ApprovalOutcome.Unavailable));
             return result is ApprovalOutcome outcome ? outcome : ApprovalOutcome.Unavailable;
         }
@@ -164,18 +164,16 @@ public static class ApprovalAnswerers
 
     public static IDisposable AutoApproveScoped(Context scopeCtx)
     {
-        var remove = scopeCtx.On(
-            ApprovalEvents.Request,
-            (_, _) => new ValueTask<object?>(ApprovalOutcome.AllowedOnce),
+        var remove = scopeCtx.OnWaterfall<ApprovalRequestNotification>(
+            (_, _) => ValueTask.FromResult<object?>(ApprovalOutcome.AllowedOnce),
             new EventOptions { Prepend = true });
         return new DisposeAction(() => remove());
     }
 
     private static DisposeAction Answerer(Context ctx, ApprovalOutcome outcome)
     {
-        var remove = ctx.On(
-            ApprovalEvents.Request,
-            (_, _) => new ValueTask<object?>(outcome),
+        var remove = ctx.OnWaterfall<ApprovalRequestNotification>(
+            (_, _) => ValueTask.FromResult<object?>(outcome),
             new EventOptions { Global = true });
         return new DisposeAction(() => remove());
     }

@@ -123,7 +123,6 @@ public static class CommandEvents
 {
     public const string Run = "command/run";
     public const string Done = "command/done";
-    public const string Change = "commands/change";
 }
 
 public sealed record CommandRunPayload(string CommandId, string Name, string? Args, string Source) : SessionEventPayload
@@ -165,7 +164,7 @@ public sealed partial class CommandsService : Service
 
     public CommandsService(Context ctx) : base(ctx, ServiceName)
     {
-        _layers = new ScopedLayers<CommandLayer>(scope => new CommandLayer(scope), () => ctx.Emit(CommandEvents.Change));
+        _layers = new ScopedLayers<CommandLayer>(scope => new CommandLayer(scope), () => ctx.Emit(new CommandsChangedNotification()));
     }
 
     public static CommandsService Register(Context ctx) => new(ctx);

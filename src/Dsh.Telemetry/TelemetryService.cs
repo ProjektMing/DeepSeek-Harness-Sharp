@@ -16,14 +16,14 @@ public sealed class TelemetryService : IDisposable
 
     public void Record(string eventName, object? payload = null)
     {
-        var line = JsonSerializer.Serialize(new Dictionary<string, object?>
-        {
-            ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            ["event"] = eventName,
-            ["payload"] = payload,
-        }, DshJson.Options);
+        var line = DshJson.Serialize(new TelemetryRecord(
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            eventName,
+            payload is null ? default : DshJson.ToElementRuntime(payload)));
         _writer.WriteLine(line);
     }
+
+    internal sealed record TelemetryRecord(long Timestamp, string Event, JsonElement Payload);
 
     public void Dispose()
     {

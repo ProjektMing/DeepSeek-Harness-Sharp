@@ -109,7 +109,7 @@ public static class PwshTool
 
     private static IReadOnlyList<ContentBlock> Render(JsonElement value)
     {
-        var run = value.Deserialize<BashRunValue>(DshJson.Options)
+        var run = DshJson.Deserialize<BashRunValue>(value)
             ?? throw new JsonException("pwsh result value is malformed");
         return [new TextBlock(BashTool.RenderResult(run))];
     }

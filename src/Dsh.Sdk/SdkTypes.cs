@@ -13,9 +13,7 @@ public static class SdkMethods
     public const string SessionStatus = "session.status";
     public const string SubagentStarted = "subagent.started";
     public const string SubagentFinished = "subagent.finished";
-    public const string CordisServiceCall = "cordis/service.call";
-    public const string CordisEventEmit = "cordis/event.emit";
-    public const string CordisEventSerial = "cordis/event.serial";
+    public const string ServiceCall = "dsh/service.call";
 }
 
 public sealed record InitializeParams(
@@ -48,6 +46,4 @@ public sealed record SubagentFinishedNotification(
     string StopReason,
     IReadOnlyList<ContentBlock>? LastAssistantMessage = null);
 
-public sealed record CordisServiceCallParams(string Service, string Method, JsonElement[]? Args = null);
-
-public sealed record CordisEventParams(string Name, JsonElement[]? Args = null);
+public sealed record ServiceCallParams(string Service, string Method, JsonElement[]? Args = null);

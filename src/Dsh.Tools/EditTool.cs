@@ -47,7 +47,7 @@ public static class EditTool
                     """),
                 (args, value) =>
                 {
-                    var result = value.Deserialize<EditResultValue>(DshJson.Options)
+        var result = DshJson.Deserialize<EditResultValue>(value)
                         ?? throw new JsonException("edit result value is malformed");
                     var replaceAll = args.TryGetProperty("replace_all", out var flag) && flag.ValueKind == JsonValueKind.True;
                     return [new TextBlock(FormatEditOutput(result.Path, replaceAll))];

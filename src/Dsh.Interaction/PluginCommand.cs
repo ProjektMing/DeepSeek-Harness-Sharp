@@ -11,8 +11,8 @@ public static class PluginCommand
         return commands.Register(new CommandDefinition
         {
             Name = "plugins",
-            Description = "List, add, or remove DSH plugin modules",
-            Input = new CommandInputDescriptor("list | add <pkg|path> | remove <pkg>"),
+            Description = "List, add, remove, disable, or enable DSH plugin modules",
+            Input = new CommandInputDescriptor("list | add <pkg|path> | remove <pkg> [--force] | disable <pkg> | enable <pkg>"),
             Handler = invocation =>
             {
                 var tokens = invocation.RawInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -22,23 +22,36 @@ public static class PluginCommand
                     var names = (manager?.PackageNames ?? catalog.PackageNames)
                         .Distinct()
                         .OrderBy(name => name, StringComparer.Ordinal);
+                    var lines = names.Select(name => manager is null ? name : $"{name}: {manager.Describe(name)}");
                     var mode = manager is null
                         ? "dynamic add/remove: unavailable"
                         : $"dynamic add/remove: {(manager.SupportsDynamicLoad ? "available" : "unavailable (NativeAOT)")}";
                     return Task.FromResult<CommandResult>(
-                        new CommandResult.Success($"{string.Join('\n', names)}\n{mode}"));
+                        new CommandResult.Success($"{string.Join('\n', lines)}\n{mode}"));
                 }
                 if (manager is null)
                 {
                     return Task.FromResult<CommandResult>(
-                        new CommandResult.Error("plugin manager is not available in this profile"));
+                        new CommandResult.Error("plugin manager is not available"));
                 }
-                if (tokens[0] == "add" && tokens.Length > 1)
-                    return RunAsync(manager.AddAsync(string.Join(' ', tokens.Skip(1))));
-                if (tokens[0] == "remove" && tokens.Length > 1)
-                    return RunAsync(manager.RemoveAsync(tokens[1]));
-                return Task.FromResult<CommandResult>(
-                    new CommandResult.Error("usage: /plugins list | add <pkg|path> | remove <pkg>"));
+                switch (tokens[0])
+                {
+                    case "add" when tokens.Length > 1:
+                        return RunAsync(manager.AddAsync(string.Join(' ', tokens.Skip(1)).Trim()));
+                    case "remove" when tokens.Length > 1:
+                    {
+                        var force = tokens.Contains("--force", StringComparer.Ordinal);
+                        var package = tokens.Skip(1).First(token => token != "--force");
+                        return RunAsync(manager.RemoveAsync(package, force));
+                    }
+                    case "disable" when tokens.Length > 1:
+                        return RunAsync(manager.DisableAsync(tokens[1]));
+                    case "enable" when tokens.Length > 1:
+                        return RunAsync(manager.EnableAsync(tokens[1]));
+                    default:
+                        return Task.FromResult<CommandResult>(
+                            new CommandResult.Error("usage: /plugins list | add <pkg|path> | remove <pkg> [--force] | disable <pkg> | enable <pkg>"));
+                }
             },
         });
     }

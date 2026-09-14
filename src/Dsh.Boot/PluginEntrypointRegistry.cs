@@ -4,9 +4,7 @@ namespace Dsh.Boot;
 
 public sealed record PluginEntrypointOptions(
     HarnessHome Home,
-    string Cwd,
-    string? Config,
-    IReadOnlyList<Dictionary<string, object?>>? Patches);
+    string Cwd);
 
 public static class PluginEntrypointRegistry
 {

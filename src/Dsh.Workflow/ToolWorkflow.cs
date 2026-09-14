@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -71,15 +72,13 @@ public static class ToolWorkflow
         var workflow = ctx.Get<WorkflowEngine>(WorkflowEngine.ServiceName)!;
         var systemPrompt = ctx.Get<SystemPrompt>(SystemPrompt.ServiceName)!;
         var recorder = new WorkflowRecorder(ctx);
-        var agentStartSubscription = ctx.On("workflow/agent-start", (thisArg, args) =>
+        var agentStartSubscription = ctx.On<WorkflowAgentStartNotification>(notification =>
         {
-            recorder.OnAgentStart(thisArg, args);
-            return new ValueTask<object?>();
+            recorder.OnAgentStart(notification.Info, notification.Agent);
         }, new EventOptions { Global = true });
-        var agentEndSubscription = ctx.On("workflow/agent-end", (thisArg, args) =>
+        var agentEndSubscription = ctx.On<WorkflowAgentEndNotification>(notification =>
         {
-            recorder.OnAgentEnd(thisArg, args);
-            return new ValueTask<object?>();
+            recorder.OnAgentEnd(notification.Info, notification.Agent);
         }, new EventOptions { Global = true });
         var prompt = systemPrompt.Section(PromptSection.Literal(
             $"tool:{resolved.ToolName}",
@@ -319,10 +318,8 @@ public static class ToolWorkflow
             }
         }
 
-        public void OnAgentStart(object? _, object?[] args)
+        public void OnAgentStart(WorkflowRunInfo info, WorkflowAgentInfo agent)
         {
-            if (args[0] is not WorkflowRunInfo info || args[1] is not WorkflowAgentInfo agent)
-                return;
             Session? session;
             lock (_sync)
                 _active.TryGetValue(info.Id, out session);
@@ -335,10 +332,8 @@ public static class ToolWorkflow
             }
         }
 
-        public void OnAgentEnd(object? _, object?[] args)
+        public void OnAgentEnd(WorkflowRunInfo info, WorkflowAgentEndInfo agent)
         {
-            if (args[0] is not WorkflowRunInfo info || args[1] is not WorkflowAgentEndInfo agent)
-                return;
             Session? session;
             lock (_sync)
                 _active.TryGetValue(info.Id, out session);

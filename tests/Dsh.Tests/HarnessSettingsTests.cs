@@ -136,4 +136,106 @@ public sealed class HarnessSettingsTests
         Assert.NotNull(resolved);
         Assert.Equal(("provider-a", "model-b"), resolved);
     }
+
+    [Fact]
+    public void LoadsPluginsFromBooleanAndMappingForms()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "dsh-settings-plugins", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        var path = Path.Combine(home, "settings.yaml");
+        File.WriteAllText(path, """
+            plugins:
+              "@scope/off": false
+              "@scope/on": true
+              "@scope/configured":
+                enabled: true
+                maxOutputChars: 16000
+                sample: false
+              "@scope/configured-off":
+                enabled: false
+                mode: quiet
+            """);
+        try
+        {
+            var settings = HarnessSettings.Load(new HarnessHome(home));
+            Assert.False(settings.Plugins["@scope/off"].Enabled);
+            Assert.True(settings.Plugins["@scope/on"].Enabled);
+            var configured = settings.Plugins["@scope/configured"];
+            Assert.True(configured.Enabled);
+            Assert.Equal(16000L, configured.Parameters["maxOutputChars"]);
+            Assert.Equal(false, configured.Parameters["sample"]);
+            Assert.False(settings.Plugins["@scope/configured-off"].Enabled);
+            Assert.Equal("quiet", settings.Plugins["@scope/configured-off"].Parameters["mode"]);
+        }
+        finally
+        {
+            Directory.Delete(home, true);
+        }
+    }
+
+    [Fact]
+    public void SavePlugins_ReplacesBlockAndKeepsComments()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "dsh-settings-save", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        var path = Path.Combine(home, "settings.yaml");
+        File.WriteAllText(path, """
+            # 顶部注释
+            rules: []
+
+            # 插件段之前的注释
+            plugins: {}
+
+            # 插件段之后的注释
+            safety:
+              autoApprove: false
+            """);
+        try
+        {
+            var settings = HarnessSettings.Load(new HarnessHome(home));
+            settings.Plugins["@scope/off"] = new PluginSetting { Enabled = false };
+            settings.Plugins["@scope/configured"] = new PluginSetting
+            {
+                Enabled = true,
+                Parameters = new Dictionary<string, object?> { ["maxOutputChars"] = 16000L },
+            };
+            settings.SavePlugins(new HarnessHome(home));
+
+            var text = File.ReadAllText(path);
+            Assert.Contains("\"@scope/off\": false", text);
+            Assert.Contains("\"@scope/configured\":", text);
+            Assert.Contains("maxOutputChars: 16000", text);
+            Assert.Contains("# 顶部注释", text);
+            Assert.Contains("# 插件段之后的注释", text);
+            Assert.Contains("safety:", text);
+            Assert.DoesNotContain("plugins: {}", text);
+        }
+        finally
+        {
+            Directory.Delete(home, true);
+        }
+    }
+
+    [Fact]
+    public void Save_KeepsPluginsBlockWhenWritingOtherSections()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "dsh-settings-save2", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        var path = Path.Combine(home, "settings.yaml");
+        try
+        {
+            HarnessSettings.Load(new HarnessHome(home));
+            var settings = HarnessSettings.Load(new HarnessHome(home));
+            settings.Rules.Add("keep-me");
+            settings.Save(new HarnessHome(home));
+
+            var text = File.ReadAllText(path);
+            Assert.Contains("plugins:", text);
+            Assert.Contains("keep-me", text);
+        }
+        finally
+        {
+            Directory.Delete(home, true);
+        }
+    }
 }

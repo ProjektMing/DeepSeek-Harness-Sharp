@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;
@@ -125,7 +126,7 @@ public class InteractionTests
         {
             using var harness = new Harness();
             var approval = ApprovalService.Register(harness.Ctx);
-            harness.Ctx.On(ApprovalEvents.Request, (_, _) => throw new InvalidOperationException("boom"),
+            harness.Ctx.OnWaterfall<ApprovalRequestNotification>((_, _) => throw new InvalidOperationException("boom"),
                 new EventOptions { Global = true });
             var agent = CreateAgent(harness);
 
@@ -267,10 +268,10 @@ public class InteractionTests
             using var harness = new Harness();
             var service = UserQuestionService.Register(harness.Ctx);
             AskUserQuestionRequest? seen = null;
-            harness.Ctx.On(UserQuestionService.RequestEvent, (_, args) =>
+            harness.Ctx.OnWaterfall<UserQuestionsRequestNotification>((notification, _) =>
             {
-                seen = (AskUserQuestionRequest)args[0]!;
-                return new ValueTask<object?>(new AskUserQuestionAnswer(
+                seen = notification.Request;
+                return ValueTask.FromResult<object?>(new AskUserQuestionAnswer(
                     [new AskUserQuestionAnswerItem("q1", ["beta"], "custom note")]));
             });
 
@@ -583,8 +584,8 @@ public class InteractionTests
                     return Task.FromResult<object?>(new { ran = "yes" });
                 },
             });
-            _harness.Ctx.On(ToolRuntime.PreExecuteEvent,
-                (_, _) => new ValueTask<object?>(new PreToolDecision.Ask()),
+            _harness.Ctx.OnWaterfall<ToolPreExecuteNotification>(
+                (_, _) => ValueTask.FromResult<object?>(new PreToolDecision.Ask()),
                 new EventOptions { Global = true });
         }
 

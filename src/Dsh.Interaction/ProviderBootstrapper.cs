@@ -6,7 +6,7 @@ namespace Dsh.Interaction;
 
 public static class ProviderBootstrapper
 {
-    public static IDisposable Register(Context ctx, HarnessOptions options)
+    public static IDisposable? Register(Context ctx, HarnessOptions options)
     {
         var settings = HarnessSettings.Load(options.Home);
         var defaultModel = settings.ResolveDefaultModel();
@@ -22,12 +22,13 @@ public static class ProviderBootstrapper
             foreach (var (name, providerSettings) in settings.Providers)
             {
                 var isDefault = string.Equals(name, defaultProvider, StringComparison.OrdinalIgnoreCase);
-                handles.Add(RegisterOne(ctx, options, credentials, llm, name, providerSettings, isDefault));
+                if (RegisterOne(ctx, options, credentials, llm, name, providerSettings, isDefault) is { } handle)
+                    handles.Add(handle);
             }
-
-            if (handles.Count == 0 || settings.ResolveProvider(defaultProvider) is null)
+            if (settings.ResolveProvider(defaultProvider) is null
+                && RegisterOne(ctx, options, credentials, llm, defaultProvider, null, true) is { } fallback)
             {
-                handles.Add(RegisterOne(ctx, options, credentials, llm, defaultProvider, settings.ResolveProvider(defaultProvider), true));
+                handles.Add(fallback);
             }
         }
         catch
@@ -36,10 +37,10 @@ public static class ProviderBootstrapper
                 handle.Dispose();
             throw;
         }
-        return new DisposableBundle(handles);
+        return handles.Count == 0 ? null : new DisposableBundle(handles);
     }
 
-    private static IDisposable RegisterOne(
+    private static IDisposable? RegisterOne(
         Context ctx,
         HarnessOptions options,
         ICredentials credentials,

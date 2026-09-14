@@ -408,7 +408,6 @@ public sealed class FileSystemSkillProvider : ISkillProvider
 public static class SkillFilesystem
 {
     public const string PluginName = "skill-filesystem";
-    public const string ObservedEvent = "fs/observed";
 
     public static IDisposable Apply(Context ctx, SkillFilesystemConfig? config = null)
     {
@@ -424,30 +423,15 @@ public static class SkillFilesystem
             if (provider is not null)
                 await provider.Dispose();
         }), "skill-filesystem watcher");
-        var observed = ctx.On(ObservedEvent, (_, args) =>
-        {
-            if (args.Length >= 3 && args[0] is SkillFsTarget target && MutationToolName(args[2]) is not null)
-                provider?.ObserveHostMutation(target.DisplayPath);
-            return new ValueTask<object?>();
-        });
-        return new SkillFilesystemRegistration(registration, effect, observed);
+        return new SkillFilesystemRegistration(registration, effect);
     }
 
-    private static string? MutationToolName(object? actor)
-        => actor is IReadOnlyDictionary<string, object?> fields
-            && fields.TryGetValue("name", out var value)
-            && value is string name
-            && name is "edit" or "write"
-                ? name
-                : null;
-
-    private sealed class SkillFilesystemRegistration(IDisposable registration, EffectHandle effect, Func<bool> observed) : IDisposable
+    private sealed class SkillFilesystemRegistration(IDisposable registration, EffectHandle effect) : IDisposable
     {
         public void Dispose()
         {
             registration.Dispose();
             effect.Dispose();
-            observed();
         }
     }
 }

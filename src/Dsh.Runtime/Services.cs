@@ -1,14 +1,16 @@
+using Dsh.Runtime.Ioc;
+
 namespace Dsh.Runtime;
 
 internal sealed class ServiceImpl
 {
     public required string Name { get; init; }
-    public object? Value { get; set; }
     public Func<bool>? Check { get; init; }
     public required PluginActivation Owner { get; init; }
 }
 
-internal sealed class ServiceTable
+/** 服务元数据(激活门控/所有权/重复检查);实例本身存放在 IServiceRegistry。 */
+internal sealed class ServiceTable(IServiceRegistry registry)
 {
     private readonly Dictionary<string, ServiceImpl> _services = new(StringComparer.Ordinal);
     private readonly Lock _sync = new();
@@ -22,7 +24,7 @@ internal sealed class ServiceTable
             return null;
         if (strict && impl.Owner.State != ActivationState.Active)
             return null;
-        return impl.Value;
+        return registry.Resolve(name);
     }
 
     public bool IsInjectable(string name)
@@ -47,34 +49,27 @@ internal sealed class ServiceTable
 
     public EffectHandle Provide(Context ctx, string name, object? value, Func<bool>? check)
     {
-        var impl = new ServiceImpl { Name = name, Value = value, Check = check, Owner = ctx.Activation };
+        var impl = new ServiceImpl { Name = name, Check = check, Owner = ctx.Activation };
         lock (_sync)
         {
             if (_services.TryGetValue(name, out var occupied))
                 throw new RuntimeException("SERVICE_REGISTERED", $"service \"{name}\" has been registered at <{occupied.Owner.Name}>");
             _services[name] = impl;
         }
+        registry.Register(name, value);
+        ctx.Root.Scheduler.OnServiceProvided(name, ctx.Activation);
         ctx.Activation.TrackProvided(name);
         var effect = new EffectHandle($"provide({name})", () =>
         {
             lock (_sync)
                 _services.Remove(name);
-            ctx.Root.NotifyServiceChanged();
+            registry.Unregister(name);
+            ctx.Root.Scheduler.OnServiceRemoved(name, ctx.Activation);
             return Task.CompletedTask;
         });
         ctx.Activation.Effects.Add(effect);
-        if (ctx.Activation.State == ActivationState.Active)
-            ctx.Root.NotifyServiceChanged();
         return effect;
     }
 
-    public void Set(string name, object? value)
-    {
-        ServiceImpl? impl;
-        lock (_sync)
-            _services.TryGetValue(name, out impl);
-        if (impl is null)
-            throw new RuntimeException("NOT_PROVIDED", $"cannot set property \"{name}\" without provide");
-        impl.Value = value;
-    }
+    internal IServiceRegistry Registry => registry;
 }

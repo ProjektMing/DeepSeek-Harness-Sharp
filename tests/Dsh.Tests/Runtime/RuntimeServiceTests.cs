@@ -80,7 +80,7 @@ public class RuntimeLoggerTests
         logger.Info("hello %s, answer %d", "world", 42);
         var message = Assert.Single(ctx.Root.Logger.Buffer);
         Assert.Equal("test", message.Name);
-        Assert.Equal("hello world, answer 42", Logger.Format(message));
+        Assert.Equal("hello world, answer 42", message.Text);
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class RuntimeLoggerTests
         var ctx = new Context();
         ctx.LoggerFor("test").Error("%s", new InvalidOperationException("boom"));
         var message = Assert.Single(ctx.Root.Logger.Buffer);
-        Assert.Contains("boom", Logger.Format(message));
+        Assert.Contains("boom", message.Text);
     }
 
     [Fact]
@@ -100,6 +100,6 @@ public class RuntimeLoggerTests
         for (var i = 0; i < 5; i++)
             ctx.LoggerFor("test").Info($"line {i}");
         Assert.Equal(3, ctx.Root.Logger.Buffer.Count);
-        Assert.Equal("line 2", Logger.Format(ctx.Root.Logger.Buffer[0]));
+        Assert.Equal("line 2", ctx.Root.Logger.Buffer[0].Text);
     }
 }

@@ -225,7 +225,7 @@ public static class StreamingResponseAutoMapper
         "stop" => new FinishReason.Stop(),
         "tool_calls" or "function_call" or "tool_use" => new FinishReason.ToolCalls(),
         "length" or "max_tokens" => new FinishReason.MaxTokens(),
-        _ => new FinishReason.Unknown(raw, JsonSerializer.SerializeToElement(raw)),
+        _ => new FinishReason.Unknown(raw, DshJson.ToElement(raw)),
     };
 
     private static bool IsTerminalStatus(string value)

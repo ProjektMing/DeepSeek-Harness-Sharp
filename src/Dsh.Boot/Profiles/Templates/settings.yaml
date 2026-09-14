@@ -39,6 +39,10 @@ skills:
 # 全局规则
 rules: []
 
+# 插件开关:true/false 或 {enabled: true, ...插件参数}
+# 未列出的插件使用 Profiles/Templates/plugins.yaml 中的默认值;/plugins 命令会改写本段。
+plugins: {}
+
 # MCP 服务器
 mcp:
   filesystem:
@@ -62,6 +66,21 @@ compaction:
 checkpoints:
   enabled: false
   max_points: 256
+  keep_days: 15
+
+# 日志
+logging:
+  # 最低级别:trace | debug | info | warn | error | off
+  level: info
+  # 内存缓冲条数(供 TUI 与启动失败聚合读取)
+  buffer_size: 1000
+  # 是否同时输出到控制台(TUI 下强制关闭)
+  console: false
+  # 写入 <home>/logs/dsh-YYYYMMDD.log
+  file: true
+  # 单文件上限(MB),超出后切分 .1/.2…
+  file_max_mb: 32
+  # 文件保留天数
   keep_days: 15
 
 # 安全设置

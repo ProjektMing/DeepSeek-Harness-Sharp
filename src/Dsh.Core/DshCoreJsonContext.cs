@@ -1,0 +1,62 @@
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Dsh.Llm;
+
+#pragma warning disable CA2255 // 库内 JSON 上下文自注册:模块初始化是最早且无依赖的注册时机
+
+namespace Dsh.Core;
+
+/** Dsh.Core 会话事件与相关类型根;多态根由自定义转换器接管,这里只提供元数据。 */
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(SessionEvent))]
+[JsonSerializable(typeof(SessionEventPayload))]
+[JsonSerializable(typeof(TurnStartPayload))]
+[JsonSerializable(typeof(TurnEndPayload))]
+[JsonSerializable(typeof(StepStartPayload))]
+[JsonSerializable(typeof(StepEndPayload))]
+[JsonSerializable(typeof(UserMessagePayload))]
+[JsonSerializable(typeof(SystemMessagePayload))]
+[JsonSerializable(typeof(AssistantChunkPayload))]
+[JsonSerializable(typeof(AssistantMessagePayload))]
+[JsonSerializable(typeof(ToolCallPayload))]
+[JsonSerializable(typeof(ToolResultPayload))]
+[JsonSerializable(typeof(RequestHeaderPayload))]
+[JsonSerializable(typeof(RequestContextPayload))]
+[JsonSerializable(typeof(SessionEndSeedPayload))]
+[JsonSerializable(typeof(UnknownSessionEventPayload))]
+[JsonSerializable(typeof(InboxSplicePayload))]
+[JsonSerializable(typeof(ToolResultErrorInfo))]
+[JsonSerializable(typeof(EpochHeader))]
+[JsonSerializable(typeof(LlmCallConfigAdapterDefaults))]
+[JsonSerializable(typeof(SurfaceOp))]
+[JsonSerializable(typeof(SurfaceOp.Append))]
+[JsonSerializable(typeof(SurfaceOp.Replace))]
+[JsonSerializable(typeof(TurnEndReason))]
+[JsonSerializable(typeof(TurnEndReason.Completed))]
+[JsonSerializable(typeof(TurnEndReason.Aborted))]
+[JsonSerializable(typeof(TurnEndReason.Blocked))]
+[JsonSerializable(typeof(TurnEndReason.Error))]
+[JsonSerializable(typeof(TurnEndReason.MaxTokens))]
+[JsonSerializable(typeof(TurnEndReason.Interrupted))]
+[JsonSerializable(typeof(TurnEndReason.Unknown))]
+[JsonSerializable(typeof(AgentCancelCause))]
+[JsonSerializable(typeof(AgentCancelCause.User))]
+[JsonSerializable(typeof(AgentCancelCause.Parent))]
+[JsonSerializable(typeof(AgentCancelCause.Hook))]
+[JsonSerializable(typeof(AgentCancelCause.Disposed))]
+[JsonSerializable(typeof(AgentCancelCause.Legacy))]
+[JsonSerializable(typeof(SessionHeader))]
+[JsonSerializable(typeof(IReadOnlyList<long>))]
+[JsonSerializable(typeof(JsonElement))]
+internal sealed partial class DshCoreJsonContext : JsonSerializerContext
+{
+}
+
+internal static class DshCoreJsonRegistration
+{
+    [ModuleInitializer]
+    internal static void Register() => DshJson.RegisterResolver(DshCoreJsonContext.Default);
+}

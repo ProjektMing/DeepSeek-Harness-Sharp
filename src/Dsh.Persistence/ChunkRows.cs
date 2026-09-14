@@ -62,7 +62,7 @@ internal static class ChunkRows
             throw new SessionFormatUnsupportedException(
                 "session log contains a request/header event with the unsupported legacy reason \"fallback\"; refusing to interpret the log — it was written by a retired pre-release harness");
         }
-        return [record.Deserialize<SessionEvent>(DshJson.Options)
+        return [DshJson.Deserialize<SessionEvent>(record)
             ?? throw new FormatException("stored session record deserialized to null")];
     }
 
@@ -84,7 +84,7 @@ internal static class ChunkRows
 
     private static string SerializeEvent(SessionEvent sessionEvent)
     {
-        var node = JsonSerializer.SerializeToNode(sessionEvent, DshJson.Options)!.AsObject();
+        var node = DshJson.ToNode(sessionEvent)!.AsObject();
         if (sessionEvent.SourceEventSeqs is { } seqs)
             node["sourceEventSeqs"] = SeqRanges.Encode(seqs);
         return node.ToJsonString();

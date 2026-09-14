@@ -55,10 +55,10 @@ public sealed class WorkerThreadWorkflowEngine : WorkflowEngine
         var controller = new CancellationTokenSource();
         var port = new WorkflowRunHost.SubagentChildPort(subagents, subagentProvider, request.Parent, controller);
         var observer = new WorkflowExecutionObserver(
-            Phase: title => EmitWorkflowEvent("workflow/phase", info, title),
-            Log: message => EmitWorkflowEvent("workflow/log", info, message),
-            AgentStart: agent => EmitWorkflowEvent("workflow/agent-start", info, agent),
-            AgentEnd: agent => EmitWorkflowEvent("workflow/agent-end", info, agent));
+            Phase: title => Ctx.Emit(new WorkflowPhaseNotification(info, title)),
+            Log: message => Ctx.Emit(new WorkflowLogNotification(info, message)),
+            AgentStart: agent => Ctx.Emit(new WorkflowAgentStartNotification(info, agent)),
+            AgentEnd: agent => Ctx.Emit(new WorkflowAgentEndNotification(info, agent)));
         var execution = new WorkflowExecution(
             meta,
             request.Script,
@@ -67,15 +67,6 @@ public sealed class WorkerThreadWorkflowEngine : WorkflowEngine
             observer,
             port);
         var run = new WorkflowRunHost(id, meta, execution, _disposeGraceMs, controller);
-        EmitWorkflowEvent("workflow/start", info);
-        _ = run.Result.ContinueWith(task =>
-        {
-            var settled = task.Result;
-            EmitWorkflowEvent("workflow/end", info, new WorkflowResultInfo(
-                settled.StopReason,
-                settled.Error,
-                settled.AgentsStarted));
-        }, TaskContinuationOptions.ExecuteSynchronously);
         return run;
     }
 

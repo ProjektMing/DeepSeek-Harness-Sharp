@@ -6,10 +6,6 @@ namespace Dsh.Core;
 public sealed class SessionStore(Context ctx) : Service(ctx, ServiceName)
 {
     public const string ServiceName = "sessions";
-    public const string CreatedEvent = "session/created";
-    public const string DisposedEvent = "session/disposed";
-    public const string EventEvent = "session/event";
-    public const string FlushEvent = "session/flush";
 
     private sealed class Entry
     {
@@ -52,23 +48,23 @@ public sealed class SessionStore(Context ctx) : Service(ctx, ServiceName)
         if (entry.Announced)
             return;
         entry.Announced = true;
-        Ctx.Emit(CreatedEvent, session);
+        Ctx.Emit(new SessionCreatedNotification(session));
     }
 
     private void PublishEvent(Session session, SessionEvent sessionEvent)
     {
-        Ctx.Events.Emit(Ctx, EventEvent, session, sessionEvent);
+        Ctx.Events.Emit(Ctx, new SessionEventNotification(session, sessionEvent));
     }
 
     private void Detach(Session session)
     {
         if (!_sessions.Remove(session.Id))
             return;
-        Ctx.Emit(DisposedEvent, session);
+        Ctx.Emit(new SessionDisposedNotification(session));
     }
 
     public async Task Flush(Session session)
-        => await Ctx.Events.Parallel(Ctx, FlushEvent, session);
+        => await Ctx.Events.Parallel(Ctx, new SessionFlushNotification(session));
 
     public Session? Get(SessionId id)
         => _sessions.TryGetValue(id, out var entry) ? entry.Session : null;

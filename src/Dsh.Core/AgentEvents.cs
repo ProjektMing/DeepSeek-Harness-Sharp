@@ -1,4 +1,5 @@
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Llm;
 
 namespace Dsh.Core;
@@ -66,30 +67,15 @@ public sealed class AgentEventDispatch(Context ctx, IAgent agent)
 {
     private Context Carrier => DshScope.ScopeTarget(ctx, agent.ScopeKey);
 
-    public void Emit(string name, object payload)
-        => ctx.Events.Emit(Carrier, name, payload);
+    public void Emit<TNotification>(TNotification notification) where TNotification : INotification
+        => ctx.Events.Emit(Carrier, notification);
 
-    public async ValueTask<object?> Serial(string name, object payload)
-        => await ctx.Events.Serial(Carrier, name, payload);
+    public async ValueTask<object?> Serial<TNotification>(TNotification notification) where TNotification : INotification
+        => await ctx.Events.Serial(Carrier, notification);
 
-    public async ValueTask<object?> Waterfall(string name, object payload, Func<ValueTask<object?>> inner)
-        => await ctx.Events.Waterfall(Carrier, name, [payload], inner);
-}
-
-public static class AgentEventNames
-{
-    public const string Created = "agent/created";
-    public const string Disposed = "agent/disposed";
-    public const string Status = "agent/status";
-    public const string InboxInserted = "agent/inbox/inserted";
-    public const string InboxClaimed = "agent/inbox/claimed";
-    public const string InboxDiscarded = "agent/inbox/discarded";
-    public const string SessionStart = "agent/session-start";
-    public const string PreStep = "agent/pre-step";
-    public const string Request = "agent/request";
-    public const string RequestError = "agent/request-error";
-    public const string TurnStopping = "agent/turn-stopping";
-    public const string Error = "agent/error";
+    public async ValueTask<object?> Waterfall<TNotification>(TNotification notification, Func<ValueTask<object?>> inner)
+        where TNotification : INotification
+        => await ctx.Events.Waterfall(Carrier, notification, inner);
 }
 
 public sealed record InboxSplicePayload(

@@ -140,13 +140,15 @@ public static class ProviderCommand
             var llm = ctx.Get<LlmRuntime>(LlmRuntime.ServiceName)!;
             var credentials = new EnvCredentials(home, Environment.CurrentDirectory);
             var options = new HarnessOptions(home, Environment.CurrentDirectory);
-            ProviderAdapterRegistrar.RegisterProviderAdapter(ctx, name, provider, baseUrl, null, apiKey, options, credentials, llm);
+            var handle = ProviderAdapterRegistrar.RegisterProviderAdapter(ctx, name, provider, baseUrl, null, apiKey, options, credentials, llm);
+            if (handle is null)
+                return new CommandResult.Error($"provider \"{name}\" saved but not activated: API key is empty");
+            return new CommandResult.Success($"added provider \"{name}\" with {models.Count} model(s)");
         }
         catch (Exception error)
         {
             return new CommandResult.Error($"provider \"{name}\" saved but could not be activated: {error.Message}");
         }
-        return new CommandResult.Success($"added provider \"{name}\" with {models.Count} model(s)");
     }
 
     private static async Task<Dictionary<string, ProviderModelSettings>> FetchModelsAsync(string baseUrl, string apiKey)

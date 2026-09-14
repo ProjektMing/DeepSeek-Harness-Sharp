@@ -115,11 +115,11 @@ public sealed class TurnEndReasonJsonConverter : JsonConverter<TurnEndReason>
         {
             "completed" => new TurnEndReason.Completed(),
             "aborted" => new TurnEndReason.Aborted(
-                root.GetProperty("reason").Deserialize<AgentCancelCause>(options)
+                DshJson.Deserialize<AgentCancelCause>(root.GetProperty("reason"))
                 ?? throw new JsonException("aborted turn end missing reason")),
             "blocked" => new TurnEndReason.Blocked(),
             "error" => new TurnEndReason.Error(
-                root.GetProperty("error").Deserialize<LlmFailure>(options)
+                DshJson.Deserialize<LlmFailure>(root.GetProperty("error"))
                 ?? throw new JsonException("error turn end missing failure")),
             "max-tokens" => new TurnEndReason.MaxTokens(),
             "interrupted" => new TurnEndReason.Interrupted(),
@@ -140,11 +140,11 @@ public sealed class TurnEndReasonJsonConverter : JsonConverter<TurnEndReason>
         {
             case TurnEndReason.Aborted aborted:
                 writer.WritePropertyName("reason");
-                JsonSerializer.Serialize(writer, aborted.Reason, options);
+                DshJson.Serialize(writer, aborted.Reason);
                 break;
             case TurnEndReason.Error error:
                 writer.WritePropertyName("error");
-                JsonSerializer.Serialize(writer, error.Failure, options);
+                DshJson.Serialize(writer, error.Failure);
                 break;
         }
         writer.WriteEndObject();

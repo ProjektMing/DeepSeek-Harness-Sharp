@@ -1,5 +1,6 @@
 ﻿using System.Text.Json.Nodes;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;
@@ -82,13 +83,11 @@ public static class ChildCompositionSupport
         if (composition.ToolFilter is { } filter)
         {
             ValidateToolFilter(childCtx, filter);
-            disposables.Add(new FuncDispose(childCtx.On(
-                ToolRuntime.PreExecuteEvent,
-                (_, args) => DenyFilteredTool(child, filter, args))));
+            disposables.Add(new FuncDispose(childCtx.OnWaterfall<ToolPreExecuteNotification>(
+                (notification, next) => DenyFilteredTool(child, filter, notification, next))));
         }
-        disposables.Add(new FuncDispose(childCtx.On(
-            SystemPrompt.AssembleEvent,
-            (_, args) => TransformAssembly(child, composition, structured, args))));
+        disposables.Add(new FuncDispose(childCtx.OnWaterfall<SystemPromptAssembleNotification>(
+            (notification, next) => TransformAssembly(child, composition, structured, notification, next))));
         return new DisposeBundle(disposables);
     }
 
@@ -106,21 +105,24 @@ public static class ChildCompositionSupport
         }
     }
 
-    private static ValueTask<object?> DenyFilteredTool(IAgent child, ToolRestriction filter, object?[] args)
+    private static ValueTask<object?> DenyFilteredTool(
+        IAgent child, ToolRestriction filter, ToolPreExecuteNotification notification, Func<ValueTask<object?>> next)
     {
-        var exec = (ToolRunContext)args[0]!;
-        var next = (Func<ValueTask<object?>>)args[^1]!;
+        var exec = notification.Run;
         if (!ReferenceEquals(exec.Agent, child) || AdmitsTool(filter, exec.Name))
             return next();
         return new ValueTask<object?>(new PreToolDecision.Deny($"unknown tool \"{exec.Name}\""));
     }
 
     private static async ValueTask<object?> TransformAssembly(
-        IAgent child, ChildComposition composition, StructuredOutputAttachment? structured, object?[] args)
+        IAgent child,
+        ChildComposition composition,
+        StructuredOutputAttachment? structured,
+        SystemPromptAssembleNotification notification,
+        Func<ValueTask<object?>> next)
     {
-        var next = (Func<ValueTask<object?>>)args[^1]!;
         var result = await next();
-        if (result is not PromptAssembly assembly || ((AssembleContext)args[1]!).Scope != child.ScopeKey)
+        if (result is not PromptAssembly assembly || notification.Context.Scope != child.ScopeKey)
             return result;
         var sections = assembly.Sections;
         if (composition.Persona is { } persona)

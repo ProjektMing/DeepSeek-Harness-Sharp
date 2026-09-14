@@ -2,6 +2,7 @@ using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Llm;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 
 namespace Dsh.Tests;
 
@@ -29,12 +30,9 @@ public sealed class RealLlmTurnSmokeTests
                 Model: modelId);
             using var app = await HarnessComposer.Compose(options);
             var failures = new List<string>();
-            app.Ctx.On(AgentEventNames.Error, (_, args) =>
+            app.Ctx.On<AgentErrorNotification>(notification =>
             {
-                dynamic payload = args[0]!;
-                string text = payload.Error is Exception error ? error.ToString() : payload.Error?.ToString() ?? "unknown";
-                failures.Add(text);
-                return new ValueTask<object?>();
+                failures.Add(notification.Error.ToString());
             }, new EventOptions { Global = true });
             var agents = app.Ctx.Get<AgentRegistry>(AgentRegistry.ServiceName)!;
             var handle = await agents.Create(new CreateAgentOptions(

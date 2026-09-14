@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Llm;
 
@@ -24,32 +25,21 @@ public sealed class HarnessSdkServer
     public HarnessSdkServer(Context ctx, IJsonRpcPeer transport)
     {
         _ctx = ctx;
-        _disposers.Add(ctx.On(SessionStore.EventEvent, (_, args) =>
+        _disposers.Add(ctx.On<Dsh.Core.SessionEventNotification>(notification =>
+            transport.Notify(SdkMethods.SessionEvent, new SessionEventNotification(notification.Session.Id.Value, notification.Event)),
+            new EventOptions { Global = true }));
+        _disposers.Add(ctx.On<AgentStatusNotification>(notification =>
+            transport.Notify(
+                SdkMethods.SessionStatus,
+                new SessionStatusNotification(notification.Agent.Id.Value, notification.Status.ToString().ToLowerInvariant())),
+            new EventOptions { Global = true }));
+        _disposers.Add(ctx.On<SessionCreatedNotification>(notification =>
         {
-            var session = (Session)args[0]!;
-            var sessionEvent = (SessionEvent)args[1]!;
-            transport.Notify(SdkMethods.SessionEvent, new SessionEventNotification(session.Id.Value, sessionEvent));
-            return new ValueTask<object?>();
-        }, new EventOptions { Global = true }));
-        _disposers.Add(ctx.On(AgentEventNames.Status, (_, args) =>
-        {
-            var payload = args[0]!;
-            if (payload.GetType().GetProperty("Agent")?.GetValue(payload) is not IAgent agent)
-                return new ValueTask<object?>();
-            var status = payload.GetType().GetProperty("Status")?.GetValue(payload) is AgentStatus statusValue
-                ? statusValue
-                : AgentStatus.Idle;
-            transport.Notify(SdkMethods.SessionStatus, new SessionStatusNotification(agent.Id.Value, status.ToString().ToLowerInvariant()));
-            return new ValueTask<object?>();
-        }, new EventOptions { Global = true }));
-        _disposers.Add(ctx.On(SessionStore.CreatedEvent, (_, args) =>
-        {
-            var session = (Session)args[0]!;
+            var session = notification.Session;
             if (session.Header.ParentSession is { } parentSession)
             {
                 transport.Notify(SdkMethods.SubagentStarted, new SubagentStartedNotification(parentSession.Value, session.Id.Value));
             }
-            return new ValueTask<object?>();
         }, new EventOptions { Global = true }));
     }
 
@@ -128,22 +118,17 @@ public sealed class HarnessSdkServer
                 return await PromptAsync(Deserialize<SessionPromptParams>(parameters));
             case SdkMethods.Shutdown:
                 return await ShutdownAsync();
-            case SdkMethods.CordisServiceCall:
-                return await CordisServiceCallAsync(Deserialize<CordisServiceCallParams>(parameters));
-            case SdkMethods.CordisEventEmit:
-                CordisEventEmit(Deserialize<CordisEventParams>(parameters));
-                return null;
-            case SdkMethods.CordisEventSerial:
-                return await CordisEventSerialAsync(Deserialize<CordisEventParams>(parameters));
+            case SdkMethods.ServiceCall:
+                return await ServiceCallAsync(Deserialize<ServiceCallParams>(parameters));
             default:
                 throw new InvalidOperationException($"unknown DeepSeek Harness SDK runtime method: {method}");
         }
     }
 
-    public async Task<object?> CordisServiceCallAsync(CordisServiceCallParams parameters)
+    public async Task<object?> ServiceCallAsync(ServiceCallParams parameters)
     {
         var service = _ctx.Get(parameters.Service, strict: false)
-            ?? throw new InvalidOperationException($"no cordis service named \"{parameters.Service}\"");
+            ?? throw new InvalidOperationException($"no service named \"{parameters.Service}\"");
         var method = service.GetType()
             .GetMethods()
             .Where(candidate => string.Equals(candidate.Name, parameters.Method, StringComparison.OrdinalIgnoreCase))
@@ -153,16 +138,7 @@ public sealed class HarnessSdkServer
         var arguments = ConvertArguments(method.GetParameters(), parameters.Args);
         var result = method.Invoke(service, arguments);
         result = await AwaitIfNeeded(result);
-        return result is null ? null : JsonSerializer.SerializeToElement(result, DshJson.Options);
-    }
-
-    public void CordisEventEmit(CordisEventParams parameters)
-        => _ctx.Emit(parameters.Name, parameters.Args?.Select(arg => (object?)arg).ToArray() ?? []);
-
-    public async Task<object?> CordisEventSerialAsync(CordisEventParams parameters)
-    {
-        var result = await _ctx.Serial(parameters.Name, parameters.Args?.Select(arg => (object?)arg).ToArray() ?? []);
-        return result is null ? null : JsonSerializer.SerializeToElement(result, DshJson.Options);
+        return result is null ? null : DshJson.ToElementRuntime(result);
     }
 
     private static object?[] ConvertArguments(System.Reflection.ParameterInfo[] parameters, JsonElement[]? args)
@@ -172,7 +148,7 @@ public sealed class HarnessSdkServer
         {
             if (args is not null && index < args.Length)
             {
-                values[index] = args[index].Deserialize(parameters[index].ParameterType, DshJson.Options);
+                values[index] = JsonSerializer.Deserialize(args[index], DshJson.Info(parameters[index].ParameterType));
             }
             else if (parameters[index].HasDefaultValue)
             {
@@ -214,7 +190,7 @@ public sealed class HarnessSdkServer
 
     private static T Deserialize<T>(JsonElement? element) where T : class
         => element is { } value
-            ? value.Deserialize<T>(DshJson.Options) ?? throw new JsonException($"invalid {typeof(T).Name} params")
+            ? DshJson.Deserialize<T>(value) ?? throw new JsonException($"invalid {typeof(T).Name} params")
             : throw new JsonException($"missing {typeof(T).Name} params");
 
     private static IReadOnlyList<ContentBlock> DeserializeContentBlocks(JsonElement[] elements)
@@ -224,7 +200,7 @@ public sealed class HarnessSdkServer
         {
             try
             {
-                blocks.Add(element.Deserialize<ContentBlock>(DshJson.Options)
+                blocks.Add(DshJson.Deserialize<ContentBlock>(element)
                     ?? throw new JsonException("content block is null"));
             }
             catch (JsonException)

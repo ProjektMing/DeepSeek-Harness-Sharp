@@ -15,8 +15,6 @@ public sealed class OpenAiCompatibleAdapter : LlmAdapter
     private static readonly IReadOnlyList<string> ReasoningKeys = ["reasoning", "reasoning_content", "thinking"];
 
     private readonly string _providerId;
-    private readonly string _baseUrl;
-    private readonly string? _apiKey;
     private readonly IReadOnlyList<string> _modelIds;
     private readonly OpenAIClient _openAi;
     private readonly bool _useResponses;
@@ -31,10 +29,9 @@ public sealed class OpenAiCompatibleAdapter : LlmAdapter
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl);
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
 
         _providerId = providerId;
-        _baseUrl = baseUrl;
-        _apiKey = apiKey;
         ProviderInfo = new LlmProviderInfo(providerId, "OpenAI-Compatible");
         _modelIds = modelIds ?? [];
         _useResponses = useResponses;
@@ -45,7 +42,7 @@ public sealed class OpenAiCompatibleAdapter : LlmAdapter
         };
         var transportClient = httpClient ?? new HttpClient(new FinishReasonNormalizingHandler(new HttpClientHandler()));
         options.Transport = new HttpClientPipelineTransport(transportClient);
-        _openAi = new OpenAIClient(new ApiKeyCredential(apiKey ?? string.Empty), options);
+        _openAi = new OpenAIClient(new ApiKeyCredential(apiKey), options);
     }
 
     public override LlmProviderInfo ProviderInfo { get; }

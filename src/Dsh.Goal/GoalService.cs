@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 
 namespace Dsh.Goal;
@@ -57,7 +58,6 @@ public sealed record GoalServiceConfig
 public sealed class GoalService : Service
 {
     public const string ServiceName = "goals";
-    public const string ChangedEvent = "goal/changed";
     public const long DefaultMaxGoalRoundsValue = 256;
 
     private sealed class GoalRuntimeState
@@ -77,22 +77,19 @@ public sealed class GoalService : Service
         var projections = ctx.Get<SessionProjectionRegistry>(SessionProjectionRegistry.ServiceName)
             ?? throw new InvalidOperationException("goals requires the sessionProjections service");
         projections.Register(GoalProjectionDefinition.Instance);
-        ctx.On(AgentEventNames.SessionStart, (_, args) =>
+        ctx.On<AgentSessionStartNotification>(notification =>
         {
-            if (args[0]?.GetType().GetProperty("Agent")?.GetValue(args[0]) is IAgent agent)
-                RuntimeState(agent.Session).Activation = GoalActivation.Disarmed;
-            return new ValueTask<object?>();
+            RuntimeState(notification.Agent.Session).Activation = GoalActivation.Disarmed;
         }, new EventOptions { Global = true });
-        ctx.On(SessionStore.EventEvent, (_, args) =>
+        ctx.On<SessionEventNotification>(notification =>
         {
-            var sessionEvent = (SessionEvent)args[1]!;
+            var sessionEvent = notification.Event;
             if (sessionEvent.Type != GoalChangePayload.EventType)
-                return new ValueTask<object?>();
-            var runtime = RuntimeState((Session)args[0]!);
+                return;
+            var runtime = RuntimeState(notification.Session);
             runtime.Activation = runtime.PendingActivation is { } pending && pending.Offset == sessionEvent.Seq
                 ? pending.Activation
                 : GoalActivation.Disarmed;
-            return new ValueTask<object?>();
         }, new EventOptions { Global = true });
     }
 
@@ -282,7 +279,7 @@ public sealed class GoalService : Service
             change is GoalChange.Clear ? GoalOperation.Clear : ((GoalChange.Snapshot)change).Operation,
             reference,
             goal);
-        new AgentEventDispatch(Ctx, agent).Emit(ChangedEvent, new { Change = notification, Agent = agent });
+        new AgentEventDispatch(Ctx, agent).Emit(new GoalChangedNotification(notification, agent));
     }
 
     private static GoalView? View(GoalProjection? state, GoalRuntimeState runtime)

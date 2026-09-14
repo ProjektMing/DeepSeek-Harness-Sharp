@@ -12,9 +12,9 @@ public sealed class PluginCatalog
     public IReadOnlyCollection<string> PackageNames => _plugins.Keys;
 
     public IReadOnlyList<(string Package, Type Implementation)> Enumerate()
-        => _plugins.Select(entry => (entry.Key, entry.Value.Type)).ToList();
+        => _plugins.Where(entry => entry.Value.Type is not null).Select(entry => (entry.Key, entry.Value.Type!)).ToList();
 
-    public IReadOnlyList<string> RegisterAssembly(Assembly assembly, AssemblyLoadContext? context = null)
+    public IReadOnlyList<string> RegisterAssembly(Assembly assembly, AssemblyLoadContext? context = null, bool replace = false)
     {
         var attributes = assembly.GetCustomAttributes<DshPluginAttribute>().ToList();
         if (attributes.Count == 0)
@@ -25,8 +25,11 @@ public sealed class PluginCatalog
         {
             if (_plugins.TryGetValue(attribute.PackageName, out var existing))
             {
-                throw new InvalidOperationException(
-                    $"Plugin package '{attribute.PackageName}' is already registered by {existing.Type.FullName}; cannot also register {pluginType.FullName}.");
+                if (!replace)
+                {
+            throw new InvalidOperationException(
+                $"Plugin package '{attribute.PackageName}' is already registered by {Describe(existing)}; cannot also register {pluginType.FullName}.");
+                }
             }
             _plugins[attribute.PackageName] = new PluginTypeHolder(pluginType, context);
             registered.Add(attribute.PackageName);
@@ -41,16 +44,34 @@ public sealed class PluginCatalog
             if (existing.Type == pluginType)
                 return;
             throw new InvalidOperationException(
-                $"Plugin package '{packageName}' is already registered by {existing.Type.FullName}; cannot also register {pluginType.FullName}.");
+                $"Plugin package '{packageName}' is already registered by {Describe(existing)}; cannot also register {pluginType.FullName}.");
         }
 
         _plugins[packageName] = new PluginTypeHolder(pluginType, null);
+    }
+
+    /** 注册非托管类型支撑的插件(原生 ABI 插件):定义由工厂在枚举/激活时构造。 */
+    public void RegisterDefinition(string packageName, Func<PluginDefinition> factory)
+    {
+        if (_plugins.TryGetValue(packageName, out var existing))
+        {
+            if (existing.DefinitionFactory is null)
+                throw new InvalidOperationException(
+                    $"Plugin package '{packageName}' is already registered by {existing.Type?.FullName}; cannot also register a native plugin.");
+            return;
+        }
+        _plugins[packageName] = new PluginTypeHolder(factory);
     }
 
     public bool TryCreate(string packageName, out IDshPlugin? plugin)
     {
         if (_plugins.TryGetValue(packageName, out var holder))
         {
+            if (holder.Type is null)
+            {
+                plugin = null;
+                return false;
+            }
             plugin = CreatePlugin(holder.Type, packageName);
             return true;
         }
@@ -65,7 +86,9 @@ public sealed class PluginCatalog
             definition = null;
             return false;
         }
-        definition = CreateDefinition(holder.Type, packageName);
+        definition = holder.DefinitionFactory is not null
+            ? holder.DefinitionFactory()
+            : CreateDefinition(holder.Type!, packageName);
         return true;
     }
 
@@ -75,7 +98,9 @@ public sealed class PluginCatalog
         {
             throw new KeyNotFoundException($"Plugin package '{packageName}' is not registered.");
         }
-        return CreateDefinition(holder.Type, packageName);
+        return holder.DefinitionFactory is not null
+            ? holder.DefinitionFactory()
+            : CreateDefinition(holder.Type!, packageName);
     }
 
     public AssemblyLoadContext? Remove(string packageName)
@@ -129,11 +154,29 @@ public sealed class PluginCatalog
         return (IDshPlugin)Activator.CreateInstance(pluginType)!;
     }
 
-    private sealed class PluginTypeHolder([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type, AssemblyLoadContext? context)
-    {
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        public Type Type { get; } = type;
+    private static string Describe(PluginTypeHolder holder)
+        => holder.Type?.FullName ?? "a native ABI plugin";
 
-        public AssemblyLoadContext? Context { get; } = context;
+    private sealed class PluginTypeHolder
+    {
+        public PluginTypeHolder(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type,
+            AssemblyLoadContext? context)
+        {
+            Type = type;
+            Context = context;
+        }
+
+        public PluginTypeHolder(Func<PluginDefinition> factory)
+        {
+            DefinitionFactory = factory;
+        }
+
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        public Type? Type { get; }
+
+        public AssemblyLoadContext? Context { get; }
+
+        public Func<PluginDefinition>? DefinitionFactory { get; }
     }
 }

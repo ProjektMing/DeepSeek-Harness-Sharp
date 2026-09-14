@@ -11,7 +11,9 @@ public sealed record HarnessOptions(
     string? BaseUrl = null,
     string? ApiKeyEnv = null,
     string? ApiKey = null,
-    string? ReasoningEffort = null);
+    string? ReasoningEffort = null,
+    bool IsTui = false,
+    string? EntrypointPlugin = null);
 
 public sealed class HarnessApp : IDisposable
 {
@@ -42,7 +44,7 @@ public static class HarnessComposer
     public const string DefaultApiKeyEnv = "DEEPSEEK_API_KEY";
 
     public static async Task<HarnessApp> Compose(HarnessOptions options)
-        => await ConfigBoot.ComposeProfile("headless", null, options);
+        => await ConfigBoot.Compose(options);
 }
 
 public static class AnonymousUserId

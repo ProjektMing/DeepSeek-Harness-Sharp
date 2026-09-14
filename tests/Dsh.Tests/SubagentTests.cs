@@ -2,6 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;
@@ -117,14 +118,13 @@ public class SubagentTests
         new StreamChunk.Finish(new FinishReason.ToolCalls()),
     ];
 
-    private static List<T> CollectEvents<T>(Context ctx, string name)
+    private static List<T> CollectEvents<TNotification, T>(Context ctx, Func<TNotification, T> select)
+        where TNotification : INotification
     {
         var collected = new List<T>();
-        ctx.On(name, (_, args) =>
+        ctx.On<TNotification>(notification =>
         {
-            if (args[0] is T payload)
-                collected.Add(payload);
-            return new ValueTask<object?>();
+            collected.Add(select(notification));
         }, new EventOptions { Global = true });
         return collected;
     }
@@ -138,8 +138,8 @@ public class SubagentTests
             _ => TextAnswer("child final answer"),
             _ => TextAnswer("parent done"),
         ]);
-        var starts = CollectEvents<SubagentRunInfo>(fixture.Ctx, SubagentRuntime.StartEvent);
-        var ends = CollectEvents<SubagentRunEndInfo>(fixture.Ctx, SubagentRuntime.EndEvent);
+        var starts = CollectEvents<SubagentStartNotification, SubagentRunInfo>(fixture.Ctx, notification => notification.Info);
+        var ends = CollectEvents<SubagentEndNotification, SubagentRunEndInfo>(fixture.Ctx, notification => notification.Info);
         var parent = await fixture.CreateParent("session-parent-spawn");
 
         parent.Followup(MessageFactory.CreateUserText("start"));

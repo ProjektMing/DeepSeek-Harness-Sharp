@@ -71,7 +71,7 @@ public sealed class MessageSourceJsonConverter : JsonConverter<MessageSource>
                 root.GetProperty("plugin").GetString() ?? throw new JsonException("plugin source missing plugin"),
                 root.TryGetProperty("form", out var form) ? form.GetString() : null,
                 root.TryGetProperty("sections", out var sections)
-                    ? sections.Deserialize<IReadOnlyList<ContextSnapshotSection>>(options) : null,
+                    ? DshJson.Deserialize<IReadOnlyList<ContextSnapshotSection>>(sections) : null,
                 root.TryGetProperty("summary", out var summary) ? summary.GetString() : null,
                 root.TryGetProperty("compactionId", out var compactionId) ? compactionId.GetString() : null,
                 root.TryGetProperty("sourceCommandId", out var sourceCommandId) ? sourceCommandId.GetString() : null),
@@ -107,7 +107,7 @@ public sealed class MessageSourceJsonConverter : JsonConverter<MessageSource>
                 if (plugin.Sections is { } sections)
                 {
                     writer.WritePropertyName("sections");
-                    JsonSerializer.Serialize(writer, sections, options);
+                    DshJson.Serialize(writer, sections);
                 }
                 if (plugin.Summary is { } summary)
                     writer.WriteString("summary", summary);

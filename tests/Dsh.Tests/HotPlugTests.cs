@@ -13,14 +13,8 @@ public sealed class HotPlugTests
         Directory.CreateDirectory(dir);
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(dir, "hotplug.cordis.yml"), """
-                - name: '@deepseek-ai/dsh-core'
-                - name: '@deepseek-ai/dsh-interaction'
-                - name: '@deepseek-ai/dsh-persistence'
-                - name: '@deepseek-ai/dsh-tool-todo'
-                """);
             var home = HarnessHome.Resolve(Path.Combine(dir, "home"));
-            using var app = await ConfigBoot.Compose(Path.Combine(dir, "hotplug.cordis.yml"), new HarnessOptions(home, Cwd: dir));
+            using var app = await ConfigBoot.Compose(new HarnessOptions(home, Cwd: dir));
             var manager = app.Ctx.Get<HarnessPluginManager>("pluginManager")!;
             Assert.Contains("@deepseek-ai/dsh-tool-todo", manager.PackageNames);
             var tools = app.Ctx.Get<ToolRuntime>(ToolRuntime.ServiceName)!;
@@ -30,11 +24,23 @@ public sealed class HotPlugTests
             Assert.Contains("removed", removed);
             Assert.Null(tools.Get("todo_write"));
             Assert.Null(app.Composition!.Find("@deepseek-ai/dsh-tool-todo"));
+            Assert.Contains("\"@deepseek-ai/dsh-tool-todo\": false", ReadSettings(home));
 
             var added = await manager.AddAsync("@deepseek-ai/dsh-tool-todo");
             Assert.Contains("activated", added);
             Assert.NotNull(tools.Get("todo_write"));
             Assert.Equal(ActivationState.Active, app.Composition.Find("@deepseek-ai/dsh-tool-todo")!.State);
+            Assert.Contains("\"@deepseek-ai/dsh-tool-todo\": true", ReadSettings(home));
+
+            var disabled = await manager.DisableAsync("@deepseek-ai/dsh-tool-todo");
+            Assert.Contains("disabled", disabled);
+            Assert.Null(app.Composition.Find("@deepseek-ai/dsh-tool-todo"));
+            Assert.Contains("\"@deepseek-ai/dsh-tool-todo\": false", ReadSettings(home));
+
+            var enabled = await manager.EnableAsync("@deepseek-ai/dsh-tool-todo");
+            Assert.Contains("activated", enabled);
+            Assert.NotNull(tools.Get("todo_write"));
+            Assert.Contains("\"@deepseek-ai/dsh-tool-todo\": true", ReadSettings(home));
         }
         finally
         {
@@ -55,14 +61,12 @@ public sealed class HotPlugTests
         Directory.CreateDirectory(dir);
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(dir, "hotplug.cordis.yml"), """
-                - name: '@deepseek-ai/dsh-core'
-                """);
             var home = HarnessHome.Resolve(Path.Combine(dir, "home"));
-            using var app = await ConfigBoot.Compose(Path.Combine(dir, "hotplug.cordis.yml"), new HarnessOptions(home, Cwd: dir));
+            using var app = await ConfigBoot.Compose(new HarnessOptions(home, Cwd: dir));
             var manager = app.Ctx.Get<HarnessPluginManager>("pluginManager")!;
             Assert.Contains("not found", await manager.AddAsync("@deepseek-ai/dsh-missing"));
             Assert.Contains("not active", await manager.RemoveAsync("@deepseek-ai/dsh-missing"));
+            Assert.Contains("not found", await manager.EnableAsync("@deepseek-ai/dsh-missing"));
         }
         finally
         {
@@ -75,4 +79,96 @@ public sealed class HotPlugTests
             }
         }
     }
+
+    [Fact]
+    public async Task PluginManager_AddsDynamicAssemblyAndCollectsItOnRemove()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"dsh-hotplug-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var home = HarnessHome.Resolve(Path.Combine(dir, "home"));
+            using var app = await ConfigBoot.Compose(new HarnessOptions(home, Cwd: dir));
+            var manager = app.Ctx.Get<HarnessPluginManager>("pluginManager")!;
+            var pluginPath = Path.Combine(AppContext.BaseDirectory, "Dsh.Tests.dll");
+            Assert.True(File.Exists(pluginPath), $"plugin assembly not found: {pluginPath}");
+            Assert.Null(app.Composition!.Find("test/local"));
+
+            var added = await manager.AddAsync(pluginPath);
+
+            Assert.Contains("activated", added);
+            Assert.Equal(ActivationState.Active, app.Composition.Find("test/local")!.State);
+            Assert.Equal("active", manager.Describe("test/local"));
+
+            var removed = await manager.RemoveAsync("test/local");
+
+            Assert.Contains("removed", removed);
+            Assert.DoesNotContain("could not be collected", removed);
+            Assert.Null(app.Composition.Find("test/local"));
+            for (var attempt = 0; attempt < 30; attempt++)
+            {
+                Assert.DoesNotContain("leaked", manager.Describe("test/local"));
+                await Task.Delay(50);
+            }
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(dir, true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PluginManager_WritebackKeepsCommentsAndOtherSections()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"dsh-hotplug-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var home = HarnessHome.Resolve(Path.Combine(dir, "home"));
+            Directory.CreateDirectory(home.Root);
+            await File.WriteAllTextAsync(Path.Combine(home.Root, "settings.yaml"), """
+                rules: []
+
+                # 用户注释:不要删我
+                plugins:
+                  "@deepseek-ai/dsh-tool-todo": false
+
+                safety:
+                  autoApprove: false
+                """);
+            using var app = await ConfigBoot.Compose(new HarnessOptions(home, Cwd: dir));
+            var manager = app.Ctx.Get<HarnessPluginManager>("pluginManager")!;
+            var tools = app.Ctx.Get<ToolRuntime>(ToolRuntime.ServiceName)!;
+            Assert.Null(tools.Get("todo_write"));
+
+            var enabled = await manager.EnableAsync("@deepseek-ai/dsh-tool-todo");
+
+            Assert.Contains("activated", enabled);
+            Assert.NotNull(tools.Get("todo_write"));
+            var settings = ReadSettings(home);
+            Assert.Contains("# 用户注释:不要删我", settings);
+            Assert.Contains("safety:", settings);
+            Assert.Contains("autoApprove: false", settings);
+            Assert.Contains("\"@deepseek-ai/dsh-tool-todo\": true", settings);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(dir, true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    private static string ReadSettings(HarnessHome home)
+        => File.ReadAllText(Path.Combine(home.Root, "settings.yaml"));
 }
