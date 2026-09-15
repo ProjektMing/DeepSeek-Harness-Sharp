@@ -79,13 +79,9 @@ public static class Program
                 return await RunEntrypointAsync(harnessHome, "tui", "@deepseek-ai/dsh-tui", resumeSessionId);
             }
             case "gui":
-                // 组合插件之前先摘掉自己的控制台, 避免 GUI 启动期间出现一闪而过的黑窗口。
+                // 组合插件之前先摘掉自己的控制台
                 ConsoleWindow.DetachIfOwned();
                 return await RunEntrypointAsync(harnessHome, "gui", "@deepseek-ai/dsh-gui", resumeSessionId);
-            case "web":
-                return await RunEntrypointAsync(harnessHome, "web", "@deepseek-ai/dsh-web");
-            case "lsp":
-                return await RunEntrypointAsync(harnessHome, "lsp", "@deepseek-ai/dsh-lsp");
             case "headless":
                 return await BootCli.RunHeadlessAsync(harnessHome, string.Join(' ', positional.Skip(1)));
             case null:
@@ -101,8 +97,6 @@ public static class Program
             Usage: dsh [options] [task...]
                    dsh tui [list | attach <id>]
                    dsh gui [--session <id>]
-                   dsh web
-                   dsh lsp
                    dsh headless "task"
 
             Options:
