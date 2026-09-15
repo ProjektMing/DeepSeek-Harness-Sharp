@@ -14,13 +14,16 @@ compaction_model: deepseek-official/deepseek-v4-flash
 subagent:
   default_model: deepseek-official/deepseek-v4-flash
 
-# LLM 提供方配置
+# LLM 提供方配置:type 缺省即 openai-compatible;要用 DeepSeek 专属行为(缓存 token 统计等)需显式 type: deepseek
+# 适配器由插件提供:@deepseek-ai/dsh-llm-openai(openai-compatible/openai-responses)、-anthropic、-deepseek
+# 未配置 key 的 provider 会被跳过并记 WARN;完全不配 provider 也能启动,首次发起请求时才报错
 providers:
   deepseek-official:
     type: openai-compatible
     options:
       baseUrl: https://api.deepseek.com
-      apiKey: sk-...
+      # 也可以用 apiKey 直接内联;留空或未设置环境变量时该 provider 会被跳过并记 WARN
+      apiKeyEnv: DEEPSEEK_API_KEY
     models:
       deepseek-v4-flash:
         name: DeepSeek V4 Flash
@@ -40,7 +43,7 @@ skills:
 rules: []
 
 # 插件开关:true/false 或 {enabled: true, ...插件参数}
-# 未列出的插件使用 Profiles/Templates/plugins.yaml 中的默认值;/plugins 命令会改写本段。
+# 插件发现即启用;只有这里显式禁用的插件才会关闭。/plugins 命令会改写本段。
 plugins: {}
 
 # MCP 服务器

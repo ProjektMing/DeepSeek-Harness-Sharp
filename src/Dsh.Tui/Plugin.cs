@@ -6,16 +6,15 @@ using Dsh.Plugins;
 
 namespace Dsh.Tui;
 
-public sealed class Plugin : IDshPlugin
+[DshEntrypoint("tui")]
+public sealed class Plugin : IDshPlugin, IDshEntrypoint
 {
     public string[] Inject => [];
 
-    public IDisposable Apply(Context ctx, object? config)
-    {
-        PluginEntrypointRegistry.Register("tui",
-            static (app, options, _) => TuiRunner.Run(app, options.Cwd));
-        return new CallbackDisposable();
-    }
+    public IDisposable Apply(Context ctx, object? config) => new CallbackDisposable();
+
+    public Task<int> RunAsync(HarnessApp app, PluginEntrypointOptions options, CancellationToken cancellationToken)
+        => TuiRunner.Run(app, options.Cwd);
 
     private sealed class CallbackDisposable : IDisposable
     {

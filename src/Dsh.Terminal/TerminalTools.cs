@@ -329,20 +329,18 @@ public static class TerminalTools
                                 ReadOutput: () => TerminalRendering.RenderSendRead(operation.ReadOutput()));
                         },
                     });
-                    return new { kind = "background", jobId };
+                    return new TerminalSendBackgroundResult("background", jobId);
                 }
                 var foreground = terminals.StartSend(owner, id, new TerminalSendRequest(text, submit, exec.Signal));
                 var result = await foreground.Done;
                 if (exec.Signal.IsCancellationRequested)
                     throw new InvalidOperationException("terminal send aborted");
-                return new
-                {
-                    kind = "foreground",
-                    viewport = result.Viewport,
-                    waitReason = WaitReasonText(result.WaitReason),
-                    sessionStatus = result.SessionStatus,
-                    truncated = result.Truncated,
-                };
+                return new TerminalSendForegroundResult(
+                    "foreground",
+                    result.Viewport,
+                    WaitReasonText(result.WaitReason),
+                    result.SessionStatus,
+                    result.Truncated);
             },
         }));
 
@@ -438,7 +436,7 @@ public static class TerminalTools
             {
                 var id = SessionId(args);
                 var closed = await terminals.Kill(RequireAgent(exec.Agent), id);
-                return new { sessionId = id.Value, outcome = closed ? "closed" : "already-closing" };
+                return new TerminalCloseResult(id.Value, closed ? "closed" : "already-closing");
             },
         }));
 

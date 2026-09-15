@@ -54,6 +54,8 @@ public static class PromptOrders
     public const int ToolLsp = 2200;
     public const int ToolSessionQuery = 2300;
     public const int ToolGoal = 2400;
+    public const int ToolE2b = 2500;
+    public const int ToolMemoryWrite = 2550;
     public const int ToolWorkflow = 2600;
     public const int ToolRalph = 2700;
     public const int ToolSubagent = 2800;

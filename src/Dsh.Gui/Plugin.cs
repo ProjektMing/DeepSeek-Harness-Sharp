@@ -6,16 +6,15 @@ using Dsh.Plugins;
 
 namespace Dsh.Gui;
 
-public sealed class Plugin : IDshPlugin
+[DshEntrypoint("gui")]
+public sealed class Plugin : IDshPlugin, IDshEntrypoint
 {
     public string[] Inject => [];
 
-    public IDisposable Apply(Context ctx, object? config)
-    {
-        PluginEntrypointRegistry.Register("gui",
-            static (app, options, _) => GuiRunner.Run(app, options.Cwd, options.ResumeSessionId));
-        return new CallbackDisposable();
-    }
+    public IDisposable Apply(Context ctx, object? config) => new CallbackDisposable();
+
+    public Task<int> RunAsync(HarnessApp app, PluginEntrypointOptions options, CancellationToken cancellationToken)
+        => GuiRunner.Run(app, options.Cwd, options.ResumeSessionId);
 
     private sealed class CallbackDisposable : IDisposable
     {

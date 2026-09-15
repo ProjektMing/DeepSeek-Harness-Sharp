@@ -22,6 +22,12 @@ public sealed record ToolJobsConfig
     public int MaxConsecutiveWakes { get; init; } = 3;
 }
 
+/** job_output 的工具返回值:必须是具名类型,源生成上下文才能提供序列化元数据(AOT 无反射回退)。 */
+public sealed record JobOutputResult(string Text, PublicJobSnapshot Job);
+
+/** job_kill 的工具返回值。 */
+public sealed record JobKillResult(string Outcome, PublicJobSnapshot Job);
+
 public sealed record PublicJobSnapshot(
     string Id,
     string Kind,
@@ -195,7 +201,7 @@ public static class ToolJobs
                     await jobs.WaitAsync(id, timeout, exec.Agent, exec.Signal);
                 }
                 var read = jobs.Read(id, exec.Agent);
-                return new { text = read.Text, job = PublicJob(read.Snapshot) };
+                return new JobOutputResult(read.Text, PublicJob(read.Snapshot));
             },
         }));
 
@@ -277,11 +283,9 @@ public static class ToolJobs
                     : null;
                 var outcome = jobs.Kill(id, exec.Agent, reason);
                 var snapshot = PublicJob(jobs.Get(id, exec.Agent));
-                return Task.FromResult<object?>(new
-                {
-                    outcome = outcome == JobKillOutcome.AlreadyFinished ? "already-finished" : "cancellation-requested",
-                    job = snapshot,
-                });
+                return Task.FromResult<object?>(new JobKillResult(
+                    outcome == JobKillOutcome.AlreadyFinished ? "already-finished" : "cancellation-requested",
+                    snapshot));
             },
         }));
 

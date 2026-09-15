@@ -77,13 +77,27 @@ public sealed class LlmRuntime : Service
     }
 
     private Registration RegistrationFor(string provider)
-        => _adapters.TryGetValue(provider, out var registration)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+        {
+            throw new LlmException(new LlmFailure(
+                "no LLM provider is configured; set `global_default_model` or add a `providers` entry in settings.yaml",
+                LlmFailureCodes.NoAdapter));
+        }
+        return _adapters.TryGetValue(provider, out var registration)
             ? registration
             : throw new LlmException(new LlmFailure($"no adapter registered for provider \"{provider}\"", LlmFailureCodes.NoAdapter));
+    }
 
     public Task<PreparedLlmCall> PrepareCall(LlmCallConfig config, CancellationToken signal = default)
     {
         var registration = RegistrationFor(config.Provider);
+        if (string.IsNullOrWhiteSpace(config.Model))
+        {
+            throw new LlmException(new LlmFailure(
+                $"no model is configured for provider \"{config.Provider}\"; set `global_default_model` or pass --model",
+                LlmFailureCodes.NoAdapter));
+        }
         var adapterCall = registration.Adapter.PrepareCall(config.Model, signal);
         var modelInfo = registration.Adapter.ResolveModel(adapterCall.Model)
             ?? new LlmResolvedModelInfo(config.Provider, adapterCall.Model, adapterCall.Model);

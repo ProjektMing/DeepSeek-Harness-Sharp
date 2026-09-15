@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Project="..\..\src\Dsh.Plugins.Generator\DshPluginHost.props" />
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -26,6 +28,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dsh.Llm\Dsh.Llm.csproj" />
+    <ProjectReference Include="..\..\src\Dsh.Llm.Anthropic\Dsh.Llm.Anthropic.csproj" />
+    <ProjectReference Include="..\..\src\Dsh.Llm.OpenAi\Dsh.Llm.OpenAi.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Llm.DeepSeek\Dsh.Llm.DeepSeek.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Core\Dsh.Core.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Compaction\Dsh.Compaction.csproj" />
@@ -59,12 +63,6 @@
     <ProjectReference Include="..\..\src\Dsh.Memory\Dsh.Memory.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Pty\Dsh.Pty.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Gui\Dsh.Gui.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="Fixtures/**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
   </ItemGroup>
 
 </Project>

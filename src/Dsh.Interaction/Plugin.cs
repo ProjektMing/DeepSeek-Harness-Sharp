@@ -15,7 +15,13 @@ public sealed class Plugin(string packageName) : IDshPlugin
 
     public string[] Inject => packageName switch
     {
-        Interaction => [SystemPrompt.ServiceName, ToolRuntime.ServiceName, LlmRuntime.ServiceName],
+        Interaction =>
+        [
+            SystemPrompt.ServiceName,
+            ToolRuntime.ServiceName,
+            LlmRuntime.ServiceName,
+            LlmAdapterFactoryRegistry.ServiceName,
+        ],
         Persona => [SystemPrompt.ServiceName],
         _ => throw new InvalidOperationException($"Unknown DSH package '{packageName}'."),
     };
@@ -39,6 +45,7 @@ public sealed class Plugin(string packageName) : IDshPlugin
             ?? throw new InvalidOperationException("pluginCatalog is required for the interaction plugin");
         var settings = HarnessSettings.Load(options.Home);
         return new DisposableBundle(
+            ProviderRegistrar.Register(ctx, options),
             ModelCommand.Register(ctx, options.Home),
             ReasoningCommand.Register(ctx),
             ProviderCommand.Register(ctx, options.Home),

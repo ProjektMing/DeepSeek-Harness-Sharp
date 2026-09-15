@@ -28,6 +28,7 @@ public sealed class Plugin(string packageName) : IDshPlugin
         _ = new SystemPrompt(ctx, SystemPromptConfigFrom(config));
         _ = new ToolRuntime(ctx);
         _ = new LlmRuntime(ctx);
+        _ = new LlmAdapterFactoryRegistry(ctx);
         _ = new AgentRegistry(ctx);
         // 持久化插件声明依赖 core 的服务, 因此它总是晚于 core 加载; 这里必须按需解析而不是取值快照。
         _ = new AgentLoop(ctx, AgentLoopConfigFrom(config), _ => PersistenceOf(ctx));

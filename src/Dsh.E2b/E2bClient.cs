@@ -43,4 +43,10 @@ public sealed class E2bClient
             root.TryGetProperty("stderr", out var stderr) ? stderr.GetString() ?? "" : "",
             root.TryGetProperty("exitCode", out var exitCode) ? exitCode.GetInt32() : 0);
     }
+
+    public async Task KillSandboxAsync(string sandboxId, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.DeleteAsync($"{_baseUrl}/sandboxes/{sandboxId}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
 }

@@ -35,13 +35,18 @@ public sealed record PluginSetting
     }
 }
 
-/** 插件清单:settings.yaml 的 plugins 段与 Profiles/Templates/plugins.yaml 默认清单。 */
-public static class PluginManifest
+/** settings.yaml 的 plugins 段:用户在此禁用插件或保存参数;未列出的插件发现即启用。 */
+public static class PluginSettingsSection
 {
     public const string PluginsKey = "plugins";
-    private const string DefaultTemplateFile = "plugins.yaml";
 
-    public static Dictionary<string, PluginSetting> Parse(object? raw)
+    public static Dictionary<string, PluginSetting> ParseDocument(string yaml)
+    {
+        var root = YamlConfig.LoadMapping(yaml);
+        return root.TryGetValue(PluginsKey, out var raw) ? Parse(raw) : new Dictionary<string, PluginSetting>(StringComparer.Ordinal);
+    }
+
+    private static Dictionary<string, PluginSetting> Parse(object? raw)
     {
         if (raw is not IDictionary<string, object?> map)
             return new Dictionary<string, PluginSetting>(StringComparer.Ordinal);
@@ -49,37 +54,5 @@ public static class PluginManifest
         foreach (var (name, value) in map)
             plugins[name] = PluginSetting.FromRaw(value);
         return plugins;
-    }
-
-    public static Dictionary<string, PluginSetting> ParseYaml(string content)
-    {
-        var root = YamlConfig.LoadMapping(content);
-        return root.TryGetValue(PluginsKey, out var raw) ? Parse(raw) : new Dictionary<string, PluginSetting>(StringComparer.Ordinal);
-    }
-
-    public static Dictionary<string, PluginSetting> LoadDefaults(string? baseDirectory = null)
-    {
-        var path = Path.Combine(baseDirectory ?? AppContext.BaseDirectory, "Profiles", "Templates", DefaultTemplateFile);
-        return File.Exists(path) ? ParseYaml(File.ReadAllText(path)) : new Dictionary<string, PluginSetting>(StringComparer.Ordinal);
-    }
-
-    /** 默认清单为底,用户 settings.yaml 的值优先。 */
-    public static Dictionary<string, PluginSetting> Merge(
-        IReadOnlyDictionary<string, PluginSetting> defaults,
-        IReadOnlyDictionary<string, PluginSetting> user)
-    {
-        var merged = new Dictionary<string, PluginSetting>(defaults, StringComparer.Ordinal);
-        foreach (var (name, setting) in user)
-            merged[name] = setting;
-        return merged;
-    }
-
-    /** 目录扫描发现、清单未列出的插件默认启用;用户已显式配置的保持不变。 */
-    public static void IncludeDiscovered(
-        Dictionary<string, PluginSetting> plugins,
-        IReadOnlyList<string> discovered)
-    {
-        foreach (var package in discovered)
-            plugins.TryAdd(package, new PluginSetting());
     }
 }

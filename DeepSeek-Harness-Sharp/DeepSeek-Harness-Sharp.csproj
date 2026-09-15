@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Project="..\src\Dsh.Plugins.Generator\DshPluginHost.props" />
+
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
@@ -27,7 +29,6 @@
 
     <ItemGroup>
       <ProjectReference Include="..\src\Dsh.Boot\Dsh.Boot.csproj" />
-      <Analyzer Include="..\src\Dsh.Plugins.Generator\bin\$(Configuration)\netstandard2.0\Dsh.Plugins.Generator.dll" />
     </ItemGroup>
 
     
@@ -37,7 +38,8 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true'">
-      <!-- 契约面 + 全部插件程序集:工具结果 record 走反射式 System.Text.Json 序列化,成员不可裁。 -->
+      <!-- 契约面:插件工厂由生成目录直接 new;插件程序集的源生成 JSON 上下文由生成目录静态引用保根
+           (DshPluginJson),故不再逐插件 root 整个程序集。 -->
       <TrimmerRootAssembly Include="Dsh.Plugins.Abstractions" />
       <TrimmerRootAssembly Include="Dsh.Runtime" />
       <TrimmerRootAssembly Include="Dsh.Plugins.Host" />
@@ -45,37 +47,6 @@
       <TrimmerRootAssembly Include="Dsh.Plugins.Native.Host" />
       <TrimmerRootAssembly Include="Dsh.Llm" />
       <TrimmerRootAssembly Include="Dsh.Core" />
-      <TrimmerRootAssembly Include="Dsh.AgentInstructions" />
-      <TrimmerRootAssembly Include="Dsh.Interaction" />
-      <TrimmerRootAssembly Include="Dsh.Interaction.AskUser" />
-      <TrimmerRootAssembly Include="Dsh.Persistence" />
-      <TrimmerRootAssembly Include="Dsh.Mcp" />
-      <TrimmerRootAssembly Include="Dsh.Tools" />
-      <TrimmerRootAssembly Include="Dsh.Skills" />
-      <TrimmerRootAssembly Include="Dsh.Goal" />
-      <TrimmerRootAssembly Include="Dsh.Compaction" />
-      <TrimmerRootAssembly Include="Dsh.PlanMode" />
-      <TrimmerRootAssembly Include="Dsh.Jobs" />
-      <TrimmerRootAssembly Include="Dsh.Subagent" />
-      <TrimmerRootAssembly Include="Dsh.Web" />
-      <TrimmerRootAssembly Include="Dsh.Workflow" />
-      <TrimmerRootAssembly Include="Dsh.Terminal" />
-      <TrimmerRootAssembly Include="Dsh.Checkpoints" />
-      <TrimmerRootAssembly Include="Dsh.IdeHistory" />
-      <TrimmerRootAssembly Include="Dsh.Pty" />
-      <TrimmerRootAssembly Include="Dsh.Sdk" />
-      <TrimmerRootAssembly Include="Dsh.Tui" />
-      <TrimmerRootAssembly Include="Dsh.Gui" />
-      <TrimmerRootAssembly Include="Dsh.Acp" />
-      <TrimmerRootAssembly Include="Dsh.Lsp" />
-      <TrimmerRootAssembly Include="Dsh.Llm.DeepSeek" />
-      <TrimmerRootAssembly Include="Dsh.Llm.OpenAi" />
-      <TrimmerRootAssembly Include="Dsh.Llm.Anthropic" />
-      <TrimmerRootAssembly Include="Dsh.E2b" />
-      <TrimmerRootAssembly Include="Dsh.Memory" />
-      <TrimmerRootAssembly Include="Dsh.SessionQuery" />
-      <TrimmerRootAssembly Include="Dsh.Telemetry" />
-      <!-- 会话事件 payload 的反射式 JSON 需要参数化构造 record 转换器(闭源泛型由反射实例化),裁掉即无法读写 JSONL。 -->
       <TrimmerRootAssembly Include="System.Text.Json" />
     </ItemGroup>
 
@@ -111,13 +82,6 @@
         <PluginAndSurfaceAssemblies Include="..\src\Dsh.IdeHistory\bin\$(Configuration)\net10.0\*.dll" />
       </ItemGroup>
       <Copy SourceFiles="@(PluginAndSurfaceAssemblies)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-    </Target>
-
-    <Target Name="BuildPluginGenerator" BeforeTargets="CoreCompile">
-      <MSBuild Projects="..\src\Dsh.Plugins.Generator\Dsh.Plugins.Generator.csproj"
-               Targets="Build"
-               Properties="Configuration=$(Configuration)"
-               RemoveProperties="RuntimeIdentifier;PublishAot;SelfContained" />
     </Target>
 
 </Project>

@@ -15,6 +15,9 @@ public sealed record ToolRalphConfig
     public long MaxResultChars { get; init; } = 16_384;
 }
 
+/** tool-ralph 的工具返回值:工作流结果是纯 JSON 图,已转成 JsonNode。 */
+public sealed record RalphRunResult(string RunId, int AgentsStarted, JsonNode Result);
+
 public static class ToolRalph
 {
     private const string Description =
@@ -238,12 +241,7 @@ public static class ToolRalph
             var value = ReadRunResult(settled.Value, maxRounds, config.MaxHandoffChars);
             if (value.TryGetValue("status", out var statusValue) && statusValue as string == "round-failed")
                 throw new InvalidOperationException(RenderRoundFailure(value, config.MaxResultChars));
-            return new
-            {
-                runId = run.Id.Value,
-                agentsStarted = settled.AgentsStarted,
-                result = value,
-            };
+            return new RalphRunResult(run.Id.Value, settled.AgentsStarted, WorkflowJson.ToNode(value)!);
         }
         finally
         {

@@ -7,7 +7,7 @@ namespace Dsh.Tests;
 public sealed class DefaultCompositionTests
 {
     [Fact]
-    public async Task DefaultManifest_ActivatesPluginsAndRegistersIdeHistoryTool()
+    public async Task DiscoveredPlugins_ActivateAndRegisterIdeHistoryTool()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"dsh-default-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
@@ -25,6 +25,16 @@ public sealed class DefaultCompositionTests
             Assert.NotNull(tools.Get("todo_write"));
             Assert.Equal(ActivationState.Active, composition.Find("@deepseek-ai/dsh-goal")?.State);
             Assert.Equal(ActivationState.Active, composition.Find("@deepseek-ai/dsh-tool-goal")?.State);
+            Assert.Equal(ActivationState.Active, composition.Find("@deepseek-ai/dsh-tool-web")?.State);
+            Assert.NotNull(tools.Get("web_search"));
+            Assert.NotNull(tools.Get("web_fetch"));
+            Assert.Equal(ActivationState.Active, composition.Find("@deepseek-ai/dsh-telemetry")?.State);
+            Assert.NotNull(app.Ctx.Get<Dsh.Telemetry.TelemetryService>(Dsh.Telemetry.TelemetryService.ServiceName, false));
+            Assert.Equal(ActivationState.Active, composition.Find("@deepseek-ai/dsh-tool-session-query")?.State);
+            Assert.NotNull(tools.Get("session_search"));
+            Assert.NotNull(app.Ctx.Get<Dsh.SessionQuery.SessionQueryService>(Dsh.SessionQuery.SessionQueryService.ServiceName, false));
+            Assert.NotNull(app.Ctx.Get<Dsh.Core.IMemoryStore>(Dsh.Core.MemoryServices.Store, false));
+            Assert.NotNull(tools.Get("memory_write"));
 
             var settings = File.ReadAllText(Path.Combine(home.Root, "settings.yaml"));
             Assert.Contains("plugins:", settings);

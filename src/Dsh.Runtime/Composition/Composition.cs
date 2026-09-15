@@ -1,3 +1,5 @@
+using Dsh.Runtime.Events;
+
 namespace Dsh.Runtime.Composition;
 
 public sealed record PluginEntry(PluginDefinition Definition, object? Config);
@@ -30,6 +32,7 @@ public sealed class Composition
             throw new RuntimeException("BOOT_FAILED",
                 $"boot failed with {failures.Count} activation error(s):\n{string.Join('\n', failures)}");
         }
+        root.Emit(new CompositionReadyNotification());
         return new Composition(root);
     }
 

@@ -12,8 +12,6 @@ public interface IPluginManager
 {
     IReadOnlyList<string> PackageNames { get; }
 
-    bool SupportsDynamicLoad { get; }
-
     string Describe(string package);
 
     Task<string> AddAsync(string packageOrPath);

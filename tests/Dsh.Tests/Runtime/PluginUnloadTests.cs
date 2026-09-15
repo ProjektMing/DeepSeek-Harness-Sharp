@@ -31,17 +31,15 @@ public class PluginUnloadTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static async Task<WeakReference> LoadActivateUnloadAsync(Context ctx, string pluginPath)
     {
-        var catalog = new PluginCatalog();
-        var context = new PluginLoadContext(pluginPath);
-        var assembly = context.LoadFromAssemblyPath(pluginPath);
-        var added = catalog.RegisterAssembly(assembly, context);
-        Assert.Contains("@deepseek-ai/dsh-checkpoints", added);
-        var definition = catalog.CreateDefinition("@deepseek-ai/dsh-checkpoints");
+        var host = new PluginHost();
+        var loaded = host.TryLoad(pluginPath);
+        Assert.Contains("@deepseek-ai/dsh-checkpoints", loaded.Packages);
+        var definition = host.Catalog.CreateDefinition("@deepseek-ai/dsh-checkpoints");
         var activation = await ctx.Scheduler.AddAsync(definition);
         await ctx.Scheduler.UnloadAsync(activation.Name);
         Assert.Equal(ActivationState.Disposed, activation.State);
-        catalog.Remove(activation.Name);
-        return PluginUnloader.Unload(context);
+        host.Catalog.Remove(activation.Name);
+        return PluginUnloader.Unload(loaded.Context!);
     }
 
     [Fact]
@@ -57,41 +55,38 @@ public class PluginUnloadTests
         }
         finally
         {
-            PinnedAssembly = null;
+            GC.KeepAlive(_pinnedAssembly);
+            _pinnedAssembly = null;
         }
     }
 
-    private static Assembly? PinnedAssembly;
+    private static Assembly? _pinnedAssembly;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static async Task<WeakReference> LoadAndPinAsync(Context ctx, string pluginPath)
     {
-        var catalog = new PluginCatalog();
-        var context = new PluginLoadContext(pluginPath);
-        var assembly = context.LoadFromAssemblyPath(pluginPath);
-        catalog.RegisterAssembly(assembly, context);
-        var definition = catalog.CreateDefinition("test/local");
+        var host = new PluginHost();
+        var loaded = host.TryLoad(pluginPath);
+        var definition = host.Catalog.CreateDefinition("test/local");
         var activation = await ctx.Scheduler.AddAsync(definition);
         await ctx.Scheduler.UnloadAsync(activation.Name);
-        catalog.Remove(activation.Name);
-        PinnedAssembly = assembly;   // 模拟插件静态引用:卸载后仍被宿主侧强引用
-        return PluginUnloader.Unload(context);
+        host.Catalog.Remove(activation.Name);
+        _pinnedAssembly = loaded.Context!.Assemblies.First(candidate => candidate.GetName().Name == "Dsh.Tests");
+        return PluginUnloader.Unload(loaded.Context);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static async Task<(PluginActivation Activation, IReadOnlyList<string> Provided)> LoadAndUnloadTrackedAsync(Context ctx, string pluginPath)
     {
-        var catalog = new PluginCatalog();
-        var context = new PluginLoadContext(pluginPath);
-        var assembly = context.LoadFromAssemblyPath(pluginPath);
-        var added = catalog.RegisterAssembly(assembly, context);
-        Assert.Contains("@deepseek-ai/dsh-checkpoints", added);
-        var definition = catalog.CreateDefinition("@deepseek-ai/dsh-checkpoints");
+        var host = new PluginHost();
+        var loaded = host.TryLoad(pluginPath);
+        Assert.Contains("@deepseek-ai/dsh-checkpoints", loaded.Packages);
+        var definition = host.Catalog.CreateDefinition("@deepseek-ai/dsh-checkpoints");
         var activation = await ctx.Scheduler.AddAsync(definition);
         var provided = activation.ProvidedNames.ToList();
         await ctx.Scheduler.UnloadAsync(activation.Name);
-        catalog.Remove(activation.Name);
-        _ = PluginUnloader.Unload(context);
+        host.Catalog.Remove(activation.Name);
+        _ = PluginUnloader.Unload(loaded.Context!);
         return (activation, provided);
     }
 }

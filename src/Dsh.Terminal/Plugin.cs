@@ -17,7 +17,7 @@ public sealed class Plugin(string packageName) : IDshPlugin
 
     public string[] Inject => packageName switch
     {
-        Terminal => [TerminalSessionService.ServiceName],
+        Terminal => [],
         TerminalBash => [TerminalSessionService.ServiceName, SubprocessService.ServiceName],
         ToolTerminal => [TerminalSessionService.ServiceName, ToolRuntime.ServiceName, SystemPrompt.ServiceName],
         _ => throw new InvalidOperationException($"Unknown DSH package '{packageName}'."),

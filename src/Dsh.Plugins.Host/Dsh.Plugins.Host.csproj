@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Project="..\Dsh.Plugins.Generator\DshNativeHost.props" />
+
   <ItemGroup>
     <ProjectReference Include="..\Dsh.Plugins.Abstractions\Dsh.Plugins.Abstractions.csproj" />
     <ProjectReference Include="..\Dsh.Plugins.Native\Dsh.Plugins.Native.csproj" />

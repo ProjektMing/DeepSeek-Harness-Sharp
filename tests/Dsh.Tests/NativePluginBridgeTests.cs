@@ -43,12 +43,15 @@ public sealed class NativePluginBridgeTests
     {
         var catalog = new PluginCatalog();
         var plugin = new FakeNativePlugin();
-        catalog.RegisterDefinition(plugin.Package, () => NativePluginBridge.CreateDefinition(plugin));
+        catalog.Register(
+            PluginDescriptor.For(plugin.Package, PluginForm.NativeLibrary),
+            () => NativePluginBridge.AsPlugin(plugin));
 
         Assert.Contains(plugin.Package, catalog.PackageNames);
         Assert.True(catalog.TryCreateDefinition(plugin.Package, out var definition));
         Assert.Equal(plugin.Package, definition!.Name);
-        Assert.False(catalog.TryCreate(plugin.Package, out _));
+        Assert.True(catalog.TryGet(plugin.Package, out var create));
+        Assert.Empty(create().Inject);
     }
 
     private sealed class FakeNativePlugin : INativePlugin

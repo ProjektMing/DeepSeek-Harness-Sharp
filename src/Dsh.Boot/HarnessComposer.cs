@@ -1,5 +1,6 @@
 using Dsh.Runtime;
 using Dsh.Runtime.Composition;
+using Dsh.Plugins;
 
 namespace Dsh.Boot;
 
@@ -29,6 +30,24 @@ public sealed class HarnessApp : IDisposable
 
     internal void Track(IDisposable disposable) => _disposables.Add(disposable);
 
+    /** 运行入口插件:按描述符 Entry 找到登记项,工厂实例须实现 IDshEntrypoint。 */
+    public async Task<int> RunEntrypointAsync(
+        string name,
+        PluginEntrypointOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var catalog = Ctx.GetProp("pluginCatalog") as PluginCatalog
+            ?? throw new RuntimeException("PLUGIN_CATALOG_MISSING", "the plugin catalog is not available");
+        var descriptor = catalog.Descriptors.FirstOrDefault(entry => entry.Entry == name)
+            ?? throw new RuntimeException("UNKNOWN_ENTRYPOINT", $"unknown plugin entrypoint '{name}'");
+        if (!catalog.TryGet(descriptor.Package, out var create) || create() is not IDshEntrypoint entrypoint)
+        {
+            throw new RuntimeException("ENTRYPOINT_NOT_RUNNABLE",
+                $"plugin package '{descriptor.Package}' does not implement the entrypoint contract");
+        }
+        return await entrypoint.RunAsync(this, options, cancellationToken);
+    }
+
     public void Dispose()
     {
         List<Exception>? errors = null;
@@ -51,28 +70,7 @@ public sealed class HarnessApp : IDisposable
 
 public static class HarnessComposer
 {
-    public const string DefaultProvider = "deepseek-official";
-    public const string DefaultModel = "deepseek-v4-flash";
-    public const string DefaultBaseUrl = "https://api.deepseek.com";
-    public const string DefaultApiKeyEnv = "DEEPSEEK_API_KEY";
-
     public static async Task<HarnessApp> Compose(HarnessOptions options)
         => await ConfigBoot.Compose(options);
 }
 
-public static class AnonymousUserId
-{
-    public static string Resolve(HarnessHome home)
-    {
-        var path = Path.Combine(home.Root, ".anonymous-user-id");
-        if (File.Exists(path))
-        {
-            var existing = File.ReadAllText(path).Trim();
-            if (Guid.TryParse(existing, out _))
-                return existing;
-        }
-        var id = Guid.NewGuid().ToString();
-        File.WriteAllText(path, id + '\n');
-        return id;
-    }
-}

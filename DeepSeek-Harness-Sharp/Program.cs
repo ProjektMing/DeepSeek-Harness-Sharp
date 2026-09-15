@@ -1,4 +1,5 @@
 using Dsh.Boot;
+using Dsh.Plugins;
 
 namespace DeepSeek_Harness_Sharp;
 
@@ -6,13 +7,9 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        // 静态引用生成目录:裁剪/AOT 下插件程序集随 typeof 引用进入产物;JIT 下与目录扫描等价。
-        Dsh.Launcher.PluginRoot.EnsureRooted();
-
         string? home = null;
         string? resumeSessionId = null;
         var dumpConfig = false;
-        var dumpDefaultConfig = false;
         var positional = new List<string>();
         for (var index = 0; index < args.Length; index++)
         {
@@ -27,9 +24,6 @@ public static class Program
                 case "--dump-config":
                     dumpConfig = true;
                     break;
-                case "--dump-default-config":
-                    dumpDefaultConfig = true;
-                    break;
                 case "--gpu":
                     break;
                 case "--help" or "-h":
@@ -42,21 +36,24 @@ public static class Program
         }
 
         var harnessHome = HarnessHome.Resolve(home);
-        if (dumpDefaultConfig)
-        {
-            foreach (var name in PluginManifest.LoadDefaults().Keys)
-                Console.WriteLine(name);
-            return 0;
-        }
         if (dumpConfig)
         {
             var settings = HarnessSettings.Load(harnessHome);
-            var plugins = PluginManifest.Merge(PluginManifest.LoadDefaults(), settings.Plugins);
-            Console.WriteLine($"dsh-home: {harnessHome.Root}");
-            Console.WriteLine($"provider: {HarnessComposer.DefaultProvider}");
-            Console.WriteLine($"model: {HarnessComposer.DefaultModel}");
-            foreach (var (name, setting) in plugins)
-                Console.WriteLine($"plugin: {name} (enabled={setting.Enabled})");
+            var host = new PluginHost();
+            host.RegisterCompiledIn();
+            var discovery = host.Scan(Path.Combine(AppContext.BaseDirectory, "plugins"), nativeBridge: null);
+            var lines = new List<string>
+            {
+                $"dsh-home: {harnessHome.Root}",
+                $"provider: {settings.ResolveDefaultModel()?.Provider ?? "(not configured)"}",
+                $"model: {settings.ResolveDefaultModel()?.Model ?? "(not configured)"}",
+            };
+            lines.AddRange(host.Catalog.Descriptors
+                .OrderBy(descriptor => descriptor.Package, StringComparer.Ordinal)
+                .Select(descriptor => $"plugin: {descriptor.Package} ({descriptor.Form}, "
+                    + $"enabled={(settings.Plugins.TryGetValue(descriptor.Package, out var setting) ? setting.Enabled : true)})"));
+            lines.AddRange(discovery.Skipped.Select(skip => $"skipped: {Path.GetFileName(skip.File)}: {skip.Reason}"));
+            await Console.Out.WriteLineAsync(string.Join('\n', lines));
             return 0;
         }
 
@@ -85,6 +82,10 @@ public static class Program
                 // 组合插件之前先摘掉自己的控制台, 避免 GUI 启动期间出现一闪而过的黑窗口。
                 ConsoleWindow.DetachIfOwned();
                 return await RunEntrypointAsync(harnessHome, "gui", "@deepseek-ai/dsh-gui", resumeSessionId);
+            case "web":
+                return await RunEntrypointAsync(harnessHome, "web", "@deepseek-ai/dsh-web");
+            case "lsp":
+                return await RunEntrypointAsync(harnessHome, "lsp", "@deepseek-ai/dsh-lsp");
             case "headless":
                 return await BootCli.RunHeadlessAsync(harnessHome, string.Join(' ', positional.Skip(1)));
             case null:
@@ -100,6 +101,8 @@ public static class Program
             Usage: dsh [options] [task...]
                    dsh tui [list | attach <id>]
                    dsh gui [--session <id>]
+                   dsh web
+                   dsh lsp
                    dsh headless "task"
 
             Options:
@@ -107,8 +110,6 @@ public static class Program
               --session <id>     open an existing session (gui) or resume one (tui)
               --gpu              run the TUI with the GPU renderer
               --dump-config      print the resolved harness configuration and exit
-              --dump-default-config
-                                 print the default plugin manifest and exit
               -h, --help         show this help
             """);
     }
@@ -117,6 +118,6 @@ public static class Program
     {
         var options = new HarnessOptions(home, Directory.GetCurrentDirectory(), IsTui: entrypoint == "tui", EntrypointPlugin: entrypointPlugin);
         using var app = await ConfigBoot.Compose(options);
-        return await PluginEntrypointRegistry.RunAsync(entrypoint, app, new PluginEntrypointOptions(home, Directory.GetCurrentDirectory(), resumeSessionId));
+        return await app.RunEntrypointAsync(entrypoint, new PluginEntrypointOptions(home, Directory.GetCurrentDirectory(), resumeSessionId));
     }
 }

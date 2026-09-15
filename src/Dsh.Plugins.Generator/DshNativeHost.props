@@ -1,0 +1,20 @@
+<Project>
+
+  <!-- 原生 ABI 宿主侧接入点:引入生成器,产出主机函数表、回调蹦床与插件函数表绑定。 -->
+  <PropertyGroup>
+    <DshNativeHost>true</DshNativeHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Analyzer Include="$(MSBuildThisFileDirectory)bin\$(Configuration)\netstandard2.0\Dsh.Plugins.Generator.dll" />
+    <CompilerVisibleProperty Include="DshNativeHost" />
+  </ItemGroup>
+
+  <Target Name="BuildDshPluginGenerator" BeforeTargets="CoreCompile">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)Dsh.Plugins.Generator.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;PublishAot;SelfContained" />
+  </Target>
+
+</Project>

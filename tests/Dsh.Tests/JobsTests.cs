@@ -429,7 +429,7 @@ public class JobsTests : IDisposable
         }
 
         private Task<ToolExecutionResult> Bash(IAgent agent, string command)
-            => _outer.Execute("bash", new { command }, agent);
+            => _outer.Execute(PersistentBashTool.ToolName, new { command }, agent);
 
         [Fact]
         public async Task CwdAndEnvironment_PersistAcrossCalls()
@@ -488,7 +488,7 @@ public class JobsTests : IDisposable
             var result = await tools.Execute(new ToolExecutionInput
             {
                 CallId = ToolCallId.Create($"call-{Guid.NewGuid():N}"),
-                Name = "bash",
+                Name = PersistentBashTool.ToolName,
                 Arguments = JsonSerializer.SerializeToElement(new { command = "seq 1 1000" }, DshJson.Options),
                 Agent = agent,
                 Signal = default,
@@ -532,7 +532,7 @@ public class JobsTests : IDisposable
             var slow = await tools.Execute(new ToolExecutionInput
             {
                 CallId = ToolCallId.Create($"call-{Guid.NewGuid():N}"),
-                Name = "bash",
+                Name = PersistentBashTool.ToolName,
                 Arguments = JsonSerializer.SerializeToElement(new { command = "sleep 30" }, DshJson.Options),
                 Agent = agent,
                 Signal = default,
@@ -545,7 +545,7 @@ public class JobsTests : IDisposable
             var alive = await tools.Execute(new ToolExecutionInput
             {
                 CallId = ToolCallId.Create($"call-{Guid.NewGuid():N}"),
-                Name = "bash",
+                Name = PersistentBashTool.ToolName,
                 Arguments = JsonSerializer.SerializeToElement(new { command = "echo alive" }, DshJson.Options),
                 Agent = agent,
                 Signal = default,

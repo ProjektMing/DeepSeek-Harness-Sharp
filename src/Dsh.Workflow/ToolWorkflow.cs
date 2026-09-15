@@ -47,6 +47,9 @@ public sealed record ToolWorkflowRunEndPayload(
     public override string Type => EventType;
 }
 
+/** tool-workflow 的工具返回值:工作流结果是纯 JSON 图,已转成 JsonNode。 */
+public sealed record WorkflowRunToolResult(string RunId, int AgentsStarted, JsonNode? Result);
+
 public static class ToolWorkflow
 {
     public const string Description = """
@@ -147,12 +150,7 @@ public static class ToolWorkflow
             var error = StopReasonError(result);
             if (error is not null)
                 throw new InvalidOperationException(error);
-            return new
-            {
-                runId = run.Id.Value,
-                agentsStarted = result.AgentsStarted,
-                result = result.Value,
-            };
+            return new WorkflowRunToolResult(run.Id.Value, result.AgentsStarted, WorkflowJson.ToNode(result.Value));
         }
         finally
         {

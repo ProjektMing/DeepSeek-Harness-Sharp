@@ -115,7 +115,7 @@ public sealed class SessionResumeTests
     {
         var homePath = Path.Combine(directory, "home");
         Directory.CreateDirectory(homePath);
-        File.WriteAllText(Path.Combine(homePath, "settings.yaml"), "logging:\n  file: false\n");
+        File.WriteAllText(Path.Combine(homePath, "settings.yaml"), GuiTestEnvironment.HomeSettings);
         return homePath;
     }
 

@@ -2,22 +2,20 @@ using Dsh.Runtime;
 using Dsh.Runtime.Composition;
 using Dsh.Runtime.Logging;
 using Dsh.Plugins;
-using System.Runtime.CompilerServices;
+using System.Reflection;
 
 namespace Dsh.Boot;
 
 public static class ConfigBoot
 {
-    [System.Diagnostics.CodeAnalysis.DynamicDependency(
-        System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods,
-        "Dsh.Interaction.ProviderBootstrapper",
-        "Dsh.Interaction")]
+    private const string NativeBridgeType = "Dsh.Plugins.Native.Host.NativePluginBridge";
+    private const string NativeBridgeAssembly = "Dsh.Plugins.Native.Host";
+
     public static async Task<HarnessApp> Compose(HarnessOptions options)
     {
         await Task.Yield();
         options.Home.Ensure();
         var settings = HarnessSettings.Load(options.Home);
-        settings.Plugins = PluginManifest.Merge(PluginManifest.LoadDefaults(), settings.Plugins);
         var logging = LoggingSetup.Create(settings.Logging?.ToOptions(), options.Home.LogsPath, allowConsole: !options.IsTui);
         var credentials = new EnvCredentials(options.Home, options.Cwd);
         var ctx = new Context(logging);
@@ -26,27 +24,17 @@ public static class ConfigBoot
         ctx.SetOwn("harnessOptions", options);
 
         var pluginHost = new PluginHost();
-        pluginHost.ScanDirectory(AppContext.BaseDirectory);
+        pluginHost.RegisterCompiledIn();
         var pluginsDirectory = Path.Combine(AppContext.BaseDirectory, "plugins");
-        var discovered = new List<string>();
-        var nativePlugins = new List<INativePlugin>();
-        if (Directory.Exists(pluginsDirectory))
-        {
-            if (RuntimeFeature.IsDynamicCodeSupported)
-                discovered.AddRange(pluginHost.ScanPluginDirectory(pluginsDirectory));
-            discovered.AddRange(RegisterNativePlugins(ctx, pluginHost, pluginsDirectory, nativePlugins));
-            if (!RuntimeFeature.IsDynamicCodeSupported
-                && discovered.Count == 0
-                && Directory.EnumerateFiles(pluginsDirectory, "*.dll").Any())
-                ctx.LoggerFor("loader").Warn("%s",
-                    $"NativeAOT build cannot load managed plugins from {pluginsDirectory}; ship native plugins there or compile managed plugins into the image");
-        }
-        PluginManifest.IncludeDiscovered(settings.Plugins, discovered);
+        var discovery = pluginHost.Scan(pluginsDirectory, ResolveNativeBridge());
+        foreach (var skip in discovery.Skipped)
+            ctx.LoggerFor("loader").Warn("%s", $"plugin skipped: {Path.GetFileName(skip.File)}: {skip.Reason}");
         ctx.SetOwn("pluginCatalog", pluginHost.Catalog);
 
+        // 零配置不兜底:没配 provider/model 就留空,启动照常,首次发起 LLM 请求时才报错。
         var defaultModel = settings.ResolveDefaultModel();
-        var provider = options.Provider ?? defaultModel?.Provider ?? HarnessComposer.DefaultProvider;
-        var model = options.Model ?? defaultModel?.Model ?? HarnessComposer.DefaultModel;
+        var provider = options.Provider ?? defaultModel?.Provider ?? "";
+        var model = options.Model ?? defaultModel?.Model ?? "";
 
         var app = new HarnessApp
         {
@@ -58,18 +46,15 @@ public static class ConfigBoot
             ReasoningEffort = options.ReasoningEffort,
         };
         app.Track(logging);
-        if (nativePlugins.Count > 0)
-            app.Track(new PluginDisposables(nativePlugins));
+        if (discovery.Native.Count > 0)
+            app.Track(new PluginDisposables(discovery.Native));
 
         try
         {
             var composition = await Composition.StartAsync(ctx, BuildEntries(ctx, pluginHost, options, settings.Plugins));
             app.Composition = composition;
             ctx.LoggerFor("boot").Info("composition ready: %d plugin(s), home %s", composition.Activations.Count, options.Home.Root);
-            var providerRegistration = RegisterProviderAdapters(ctx, options);
-            if (providerRegistration is not null)
-                app.Track(providerRegistration);
-            var manager = new HarnessPluginManager(pluginHost, composition, options.Home, settings);
+            var manager = new HarnessPluginManager(pluginHost, composition, options.Home, settings, discovery.Managed);
             app.Track(manager);
             ctx.Provide("pluginManager", manager);
         }
@@ -88,19 +73,25 @@ public static class ConfigBoot
         IReadOnlyDictionary<string, PluginSetting> plugins)
     {
         var entries = new List<PluginEntry>();
-        foreach (var (name, setting) in plugins)
+        foreach (var name in host.Catalog.PackageNames.OrderBy(name => name, StringComparer.Ordinal))
         {
-            if (!setting.Enabled)
+            var setting = plugins.GetValueOrDefault(name);
+            if (setting is { Enabled: false })
                 continue;
             if (!host.Catalog.TryCreateDefinition(name, out var definition))
             {
                 ctx.LoggerFor("loader").Error("%s", $"plugin not found: {name}");
                 continue;
             }
-            entries.Add(new PluginEntry(definition!, setting.Parameters.Count == 0 ? null : setting.Parameters));
+            entries.Add(new PluginEntry(definition!, setting is { Parameters.Count: > 0 } ? setting.Parameters : null));
+        }
+        foreach (var name in plugins.Keys)
+        {
+            if (!host.Catalog.PackageNames.Contains(name, StringComparer.Ordinal))
+                ctx.LoggerFor("loader").Error("%s", $"plugin not found: {name}");
         }
         if (options.EntrypointPlugin is { Length: > 0 } entrypoint
-            && !plugins.ContainsKey(entrypoint)
+            && !entries.Any(entry => entry.Definition.Name == entrypoint)
             && host.Catalog.TryCreateDefinition(entrypoint, out var entryDefinition))
         {
             entries.Add(new PluginEntry(entryDefinition!, null));
@@ -108,54 +99,32 @@ public static class ConfigBoot
         return entries;
     }
 
-    private static IDisposable? RegisterProviderAdapters(Context ctx, HarnessOptions options)
+    /** 原生插件定义桥由 Dsh.Plugins.Native.Host 提供;未随本体发布时返回 null,原生插件将按跳过处理。 */
+    private static Func<INativePlugin, IDshPlugin>? ResolveNativeBridge()
     {
-        var type = AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("Dsh.Interaction.ProviderBootstrapper"))
+        var bridge = FindNativeBridge();
+        return bridge?.GetMethod("AsPlugin", [typeof(INativePlugin)]) is { } create
+            ? plugin => (IDshPlugin)create.Invoke(null, [plugin])!
+            : null;
+    }
+
+    /** 桥程序集默认不随宿主启动加载:先从已加载程序集查找,再按名加载;AOT 下已在镜像中,直接命中。 */
+    private static Type? FindNativeBridge()
+    {
+        var bridge = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType(NativeBridgeType))
             .FirstOrDefault(candidate => candidate is not null);
-        if (type is null)
+        if (bridge is not null)
+            return bridge;
+        try
         {
-            ctx.Logger.Warn("%s", "Dsh.Interaction.ProviderBootstrapper is not available in this build; LLM provider adapters cannot be registered");
+            return Assembly.Load(NativeBridgeAssembly).GetType(NativeBridgeType);
+        }
+        catch (Exception)
+        {
             return null;
         }
-        return (IDisposable)type.GetMethod("Register", [typeof(Context), typeof(HarnessOptions)])!
-            .Invoke(null, [ctx, options])!;
     }
-
-    /** 扫描 plugins 目录中的原生共享库,经桥接程序集转成插件定义。 */
-    private static IReadOnlyList<string> RegisterNativePlugins(
-        Context ctx,
-        PluginHost host,
-        string directory,
-        List<INativePlugin> loaded)
-    {
-        var packages = new List<string>();
-        var bridge = AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("Dsh.Plugins.Native.Host.NativePluginBridge"))
-            .FirstOrDefault(candidate => candidate is not null);
-        foreach (var file in Directory.EnumerateFiles(directory).Where(IsNativeLibrary))
-        {
-            var plugin = NativePluginLibrary.TryLoad(file);
-            if (plugin is null)
-                continue;
-            if (bridge is null)
-            {
-                plugin.Dispose();
-                ctx.LoggerFor("loader").Warn("%s",
-                    $"native plugin \"{plugin.Package}\" loaded from {file} but the native bridge is not available in this build");
-                continue;
-            }
-            var create = bridge.GetMethod("CreateDefinition", [typeof(INativePlugin)])!;
-            host.Catalog.RegisterDefinition(plugin.Package, () => (PluginDefinition)create.Invoke(null, [plugin])!);
-            loaded.Add(plugin);
-            packages.Add(plugin.Package);
-            ctx.LoggerFor("loader").Info("%s", $"native plugin registered: {plugin.Package} ({Path.GetFileName(file)})");
-        }
-        return packages;
-    }
-
-    private static bool IsNativeLibrary(string path)
-        => Path.GetExtension(path) is ".so" or ".dylib" or ".dll";
 
     private sealed class PluginDisposables(IReadOnlyList<INativePlugin> plugins) : IDisposable
     {

@@ -1,4 +1,3 @@
-using Dsh.Boot;
 using Dsh.Plugins;
 
 namespace Dsh.Tests;
@@ -6,7 +5,7 @@ namespace Dsh.Tests;
 public sealed class PluginDiscoveryTests
 {
     [Fact]
-    public void ScanPluginDirectory_RegistersPluginFromFolder()
+    public void Scan_RegistersManagedPluginFromFolderAsManagedAssembly()
     {
         var source = Path.Combine(AppContext.BaseDirectory, "Dsh.Goal.dll");
         Assert.True(File.Exists(source), $"missing build output: {source}");
@@ -17,29 +16,21 @@ public sealed class PluginDiscoveryTests
             File.Copy(source, Path.Combine(folder, "Dsh.Goal.dll"));
             var host = new PluginHost();
 
-            var discovered = host.ScanPluginDirectory(folder);
+            var result = host.Scan(folder, nativeBridge: null);
 
-            Assert.Contains("@deepseek-ai/dsh-goal", discovered);
+            Assert.Empty(result.Skipped);
+            Assert.Contains(result.Managed, entry => entry.Package == "@deepseek-ai/dsh-goal");
+            Assert.True(host.Catalog.TryDescribe("@deepseek-ai/dsh-goal", out var descriptor));
+            Assert.Equal(PluginForm.ManagedAssembly, descriptor.Form);
+            Assert.True(descriptor.Capabilities.HasFlag(PluginCapabilities.Unload));
             Assert.True(host.Catalog.TryCreateDefinition("@deepseek-ai/dsh-goal", out var definition));
             Assert.NotNull(definition);
+            foreach (var entry in result.Managed)
+                entry.Context.Unload();
         }
         finally
         {
             Directory.Delete(folder, true);
         }
-    }
-
-    [Fact]
-    public void IncludeDiscovered_EnablesOnlyUnlistedPlugins()
-    {
-        var plugins = new Dictionary<string, PluginSetting>(StringComparer.Ordinal)
-        {
-            ["@deepseek-ai/dsh-plan-mode"] = new() { Enabled = false },
-        };
-
-        PluginManifest.IncludeDiscovered(plugins, ["@deepseek-ai/dsh-plan-mode", "@deepseek-ai/dsh-lsp"]);
-
-        Assert.False(plugins["@deepseek-ai/dsh-plan-mode"].Enabled);
-        Assert.True(plugins["@deepseek-ai/dsh-lsp"].Enabled);
     }
 }
