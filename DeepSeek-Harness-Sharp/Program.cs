@@ -76,10 +76,6 @@ public static class Program
             }
             case "gui":
                 return await RunEntrypointAsync(harnessHome, "gui", "@deepseek-ai/dsh-gui");
-            case "web":
-                return await RunEntrypointAsync(harnessHome, "web", "@deepseek-ai/dsh-web");
-            case "lsp":
-                return await RunEntrypointAsync(harnessHome, "lsp", "@deepseek-ai/dsh-lsp");
             case "headless":
                 return await BootCli.RunHeadlessAsync(harnessHome, string.Join(' ', positional.Skip(1)));
             case null:
@@ -95,8 +91,6 @@ public static class Program
             Usage: dsh [options] [task...]
                    dsh tui [list | attach <id>]
                    dsh gui
-                   dsh web
-                   dsh lsp
                    dsh headless "task"
 
             Options:
