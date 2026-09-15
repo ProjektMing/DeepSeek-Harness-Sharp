@@ -1,5 +1,11 @@
 namespace Dsh.Runtime.Events;
 
+/** 组合启动完成:各插件 Apply 都已执行,适合做"全量就绪后"的宿主级工作。 */
+public sealed record CompositionReadyNotification : INotification
+{
+    public static string EventName => "composition/ready";
+}
+
 /** 通知类型即事件身份;EventName 仅用于日志/审计可读名。 */
 public interface INotification
 {

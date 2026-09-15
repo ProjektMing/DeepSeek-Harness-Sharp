@@ -21,14 +21,13 @@ public class ThirdPartyEventTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static async Task<string?> LoadAndActivateAsync(Context ctx, string pluginPath)
     {
-        var catalog = new PluginCatalog();
-        var context = new PluginLoadContext(pluginPath);
-        var assembly = context.LoadFromAssemblyPath(pluginPath);
-        var added = catalog.RegisterAssembly(assembly, context);
-        Assert.Contains("test/local", added);
-        var definition = catalog.CreateDefinition("test/local");
+        var host = new PluginHost();
+        var loaded = host.TryLoad(pluginPath);
+        Assert.Contains("test/local", loaded.Packages);
+        var definition = host.Catalog.CreateDefinition("test/local");
         var activation = await ctx.Scheduler.AddAsync(definition);
         Assert.Equal(ActivationState.Active, activation.State);
+        var assembly = loaded.Context!.Assemblies.First(candidate => candidate.GetName().Name == "Dsh.Tests");
         var pluginType = assembly.GetType("Dsh.Tests.TestPlugin")!;
         return (string?)pluginType.GetProperty("ReceivedText")!.GetValue(null);
     }

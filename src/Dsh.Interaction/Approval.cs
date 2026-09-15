@@ -1,4 +1,5 @@
 #pragma warning disable CA2255
+using Dsh.Plugins;
 using System.Runtime.CompilerServices;
 using Dsh.Runtime;
 using Dsh.Runtime.Events;
@@ -194,9 +195,8 @@ internal sealed class DisposeAction(Action dispose) : IDisposable
 
 internal static class ApprovalCodecRegistration
 {
-    // 程序集加载即注册：审批事件可能在 ApprovalService 构造之前被日志读写。
-    // ReSharper disable once All
-    [ModuleInitializer]
+    // 启动时由生成目录显式调用：审批事件可能在 ApprovalService 构造之前被日志读写。
+    [DshPluginInitializer]
     internal static void Register()
     {
         SessionEventCodec.Register<ApprovalAskedPayload>(ApprovalEvents.Asked);

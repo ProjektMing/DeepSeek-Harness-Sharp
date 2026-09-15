@@ -5,25 +5,38 @@ using Dsh.Runtime.Composition;
 
 namespace Dsh.Boot;
 
-public sealed class HarnessPluginManager(
-    PluginHost host,
-    Composition composition,
-    HarnessHome home,
-    HarnessSettings settings) : IPluginManager, IDisposable
+public sealed class HarnessPluginManager : IPluginManager, IDisposable
 {
+    private readonly PluginHost _host;
+    private readonly Composition _composition;
+    private readonly HarnessHome _home;
+    private readonly HarnessSettings _settings;
     private readonly Dictionary<string, PluginLoadContext> _loadedContexts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _leaked = new(StringComparer.Ordinal);
 
-    public IReadOnlyList<string> PackageNames => host.Catalog.PackageNames
+    public HarnessPluginManager(
+        PluginHost host,
+        Composition composition,
+        HarnessHome home,
+        HarnessSettings settings,
+        IReadOnlyList<ManagedPlugin> loadedOnStart)
+    {
+        _host = host;
+        _composition = composition;
+        _home = home;
+        _settings = settings;
+        foreach (var entry in loadedOnStart)
+            _loadedContexts[entry.Package] = entry.Context;
+    }
+
+    public IReadOnlyList<string> PackageNames => _host.Catalog.PackageNames
         .Distinct()
         .OrderBy(name => name, StringComparer.Ordinal)
         .ToList();
 
-    public bool SupportsDynamicLoad => RuntimeFeature.IsDynamicCodeSupported;
-
     public string Describe(string package)
     {
-        var activation = composition.Find(package);
+        var activation = _composition.Find(package);
         var state = activation?.State switch
         {
             ActivationState.Active => "active",
@@ -32,10 +45,12 @@ public sealed class HarnessPluginManager(
             ActivationState.Failed => $"failed: {activation.Error}",
             ActivationState.Disposed => "removed",
             ActivationState.Pending => "pending (dependencies missing)",
-            null when settings.Plugins.TryGetValue(package, out var setting) && !setting.Enabled => "disabled",
+            null when _settings.Plugins.TryGetValue(package, out var setting) && !setting.Enabled => "disabled",
             _ => "available",
         };
-        return _leaked.Contains(package) ? $"{state}, leaked" : state;
+        var descriptor = Descriptor(package);
+        var line = descriptor is null ? state : $"{state} [{FormName(descriptor)}]";
+        return _leaked.Contains(package) ? $"{line}, leaked" : line;
     }
 
     public async Task<string> AddAsync(string packageOrPath)
@@ -45,7 +60,7 @@ public sealed class HarnessPluginManager(
             return "usage: /plugins add <package|path>";
         if (spec.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || File.Exists(spec))
             return await AddFromPathAsync(spec);
-        if (host.Catalog.PackageNames.Contains(spec, StringComparer.Ordinal))
+        if (_host.Catalog.PackageNames.Contains(spec, StringComparer.Ordinal))
             return await ActivateAsync(spec);
         return $"plugin package not found: {spec}";
     }
@@ -55,10 +70,10 @@ public sealed class HarnessPluginManager(
         var trimmed = package.Trim();
         if (trimmed.Length == 0)
             return "usage: /plugins remove <package>";
-        if (composition.Root.Scheduler.Find(trimmed) is null)
+        if (_composition.Root.Scheduler.Find(trimmed) is null)
             return $"plugin {trimmed} is not active";
-        var (weak, leaked) = await UnloadDynamicAsync(trimmed, force);   // 内置插件 weak 为 null
-        Persist(trimmed, weak is null ? new PluginSetting { Enabled = false } : null);
+        var (weak, leaked) = await UnloadAsync(trimmed, force, reclaim: IsManaged(trimmed));
+        Persist(trimmed, new PluginSetting { Enabled = false });
         if (leaked)
             _leaked.Add(trimmed);
         if (weak is null)
@@ -74,10 +89,11 @@ public sealed class HarnessPluginManager(
             return "usage: /plugins disable <package>";
         if (!IsKnown(trimmed))
             return $"plugin package not found: {trimmed}";
-        if (composition.Root.Scheduler.Find(trimmed) is { } activation)
+        if (_composition.Root.Scheduler.Find(trimmed) is not null)
         {
-            await composition.Root.Scheduler.UnloadAsync(trimmed);
-            if (activation.State != ActivationState.Disposed)
+            // 禁用只卸载效果,不回收制品:登记仍在,enable 可复原;回收交给 remove。
+            var outcome = await UnloadAsync(trimmed, force: false, reclaim: false);
+            if (outcome.Leaked)
             {
                 _leaked.Add(trimmed);
                 return $"plugin {trimmed} disabled with timeout; effects may still be running (leaked)";
@@ -95,7 +111,7 @@ public sealed class HarnessPluginManager(
         if (!IsKnown(trimmed))
             return $"plugin package not found: {trimmed}";
         Persist(trimmed, new PluginSetting { Enabled = true });
-        if (composition.Root.Scheduler.Find(trimmed) is not null)
+        if (_composition.Root.Scheduler.Find(trimmed) is not null)
             return $"plugin {trimmed} enabled (already active)";
         return await ActivateAsync(trimmed);
     }
@@ -105,37 +121,38 @@ public sealed class HarnessPluginManager(
         var path = Path.GetFullPath(spec);
         if (!File.Exists(path))
             return $"plugin file not found: {path}";
+        if (!RuntimeFeature.IsDynamicCodeSupported)
+            return "NativeAOT build cannot load managed plugins at runtime; compile the plugin into the image or ship it as a native library";
+        PluginLoadResult result;
         try
         {
-            var context = new PluginLoadContext(path);
-            var assembly = context.LoadFromAssemblyPath(path);
-            var added = host.Catalog.RegisterAssembly(assembly, context, replace: true);
-            if (added.Count == 0)
-            {
-                context.Unload();
-                return $"assembly has no DSH plugin: {path}";
-            }
-            var messages = new List<string>();
-            foreach (var package in added)
-            {
-                _loadedContexts[package] = context;
-                messages.Add(await ActivateAsync(package));
-            }
-            return string.Join('\n', messages);
+            result = _host.TryLoad(path);
         }
-        catch (PlatformNotSupportedException)
+        catch (Exception error) when (error is BadImageFormatException or FileLoadException)
         {
-            return "dynamic plugin loading is not supported in this build (NativeAOT); list the plugin in settings.yaml and restart";
+            return $"assembly load failed: {path}: {error.Message}";
         }
+        if (result.Packages.Count == 0)
+        {
+            var reasons = string.Join("; ", result.Skipped.Select(skip => skip.Reason));
+            return reasons.Length == 0 ? $"assembly has no DSH plugin: {path}" : $"plugin load skipped: {reasons}";
+        }
+        var messages = new List<string>();
+        foreach (var package in result.Packages)
+        {
+            _loadedContexts[package] = result.Context!;
+            messages.Add(await ActivateAsync(package));
+        }
+        return string.Join('\n', messages);
     }
 
     private async Task<string> ActivateAsync(string package)
     {
-        if (composition.Find(package) is { } existing)
+        if (_composition.Find(package) is { } existing)
             return $"plugin {package} is already active ({existing.State})";
-        if (!host.Catalog.TryCreateDefinition(package, out var definition))
+        if (!_host.Catalog.TryCreateDefinition(package, out var definition))
             return $"plugin package not found: {package}";
-        var activation = await composition.AddAsync(definition!);
+        var activation = await _composition.AddAsync(definition!);
         if (activation.State == ActivationState.Active)
         {
             Persist(package, new PluginSetting { Enabled = true });
@@ -144,18 +161,18 @@ public sealed class HarnessPluginManager(
         return $"plugin {package} failed to activate: {activation.Error}";
     }
 
-    /** 摘除动态插件并返回弱引用供回收验证;内置插件(无 ALC)返回 null。
+    /** 摘除插件并返回弱引用供回收验证;reclaim 仅对托管程序集形态成立(可回收 ALC)。
      *  独立成帧并只返回弱引用,使插件类型/定义等强引用在本方法返回后即可回收。 */
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private async Task<(WeakReference? Weak, bool Leaked)> UnloadDynamicAsync(string package, bool force)
+    private async Task<(WeakReference? Weak, bool Leaked)> UnloadAsync(string package, bool force, bool reclaim)
     {
-        var activation = await composition.Root.Scheduler.UnloadAsync(package, force: force);
+        var activation = await _composition.Root.Scheduler.UnloadAsync(package, force: force);
         var leaked = activation is null || activation.State != ActivationState.Disposed;
         Release(ref activation);
-        await composition.Root.Scheduler.SettleAsync();   // 排空调度泵,避免快照任务滞留插件引用
-        if (!_loadedContexts.Remove(package, out var context))
+        await _composition.Root.Scheduler.SettleAsync();   // 排空调度泵,避免快照任务滞留插件引用
+        if (!reclaim || !_loadedContexts.Remove(package, out var context))
             return (null, leaked);
-        _ = host.Catalog.Remove(package);
+        _host.Catalog.Remove(package);
         var weak = PluginUnloader.Unload(context);
         Release(ref context);
         return (weak, leaked);
@@ -169,7 +186,25 @@ public sealed class HarnessPluginManager(
     }
 
     private bool IsKnown(string package)
-        => composition.Root.Scheduler.Find(package) is not null || host.Catalog.PackageNames.Contains(package, StringComparer.Ordinal);
+        => _composition.Root.Scheduler.Find(package) is not null
+            || _host.Catalog.PackageNames.Contains(package, StringComparer.Ordinal);
+
+    private bool IsManaged(string package)
+        => Descriptor(package)?.Form == PluginForm.ManagedAssembly;
+
+    private PluginDescriptor? Descriptor(string package)
+        => _host.Catalog.TryDescribe(package, out var descriptor) ? descriptor : null;
+
+    private static string FormName(PluginDescriptor descriptor)
+    {
+        var form = descriptor.Form switch
+        {
+            PluginForm.CompiledIn => "compiled-in",
+            PluginForm.ManagedAssembly => "managed-assembly",
+            _ => "native-library",
+        };
+        return descriptor.Capabilities.HasFlag(PluginCapabilities.Unload) ? $"{form}, reclaimable" : form;
+    }
 
     /** 分离帧验证 ALC 回收:调用帧的残留引用(异步状态机/局部变量)会误判,故放到独立任务里做。 */
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -182,23 +217,15 @@ public sealed class HarnessPluginManager(
             return;
         }
         _leaked.Add(package);
-        composition.Root.Logger.Error("%s",
+        _composition.Root.Logger.Error("%s",
             $"plugin {package} 的加载上下文未能回收:{report};静态引用或未退出的线程会阻止回收,"
             + "可用 `dotnet-dump analyze <pid>` 执行 `!dumpheap -type LoaderAllocator` 与 `!gcroot <addr>` 排查");
     }
 
-    private void Persist(string package, PluginSetting? setting)
+    private void Persist(string package, PluginSetting setting)
     {
-        if (setting is null)
-        {
-            if (!settings.Plugins.Remove(package))
-                return;
-        }
-        else
-        {
-            settings.Plugins[package] = setting;
-        }
-        settings.SavePlugins(home);
+        _settings.Plugins[package] = setting;
+        _settings.SavePlugins(_home);
     }
 
     public void Dispose()

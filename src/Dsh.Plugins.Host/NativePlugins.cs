@@ -1,6 +1,5 @@
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
+using Dsh.Plugins.Generated;
 using Dsh.Plugins.Native;
 
 namespace Dsh.Plugins;
@@ -23,31 +22,22 @@ public interface INativePlugin : IDisposable
     void Deactivate();
 }
 
-/** 原生共享库插件:NativeLibrary.Load + dsh_plugin_entry 握手。 */
+/** 原生共享库插件:NativeLibrary.Load + 生成胶水的握手、句柄与两段式调用。 */
 public sealed unsafe class NativePluginLibrary : INativePlugin
 {
-    private static readonly delegate* unmanaged[Cdecl]<void*, int, byte*, void> LogCallback = &LogTrampoline;
-    private static readonly delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte*, int, int> RegisterToolCallback = &RegisterToolTrampoline;
-    private static readonly DshHostApi* HostApi;
+    private static readonly Sink Dispatcher = new();
 
     private readonly nint _library;
-    private readonly DshPluginApi _api;
+    private readonly DshPluginApiBinding _binding;
     private INativePluginHost? _host;
     private GCHandle _self;
 
-    static NativePluginLibrary()
-    {
-        HostApi = (DshHostApi*)Marshal.AllocHGlobal(sizeof(DshHostApi));
-        HostApi->AbiVersion = DshNativePluginAbi.Version;
-        HostApi->Context = null;
-        HostApi->Log = LogCallback;
-        HostApi->RegisterTool = RegisterToolCallback;
-    }
+    static NativePluginLibrary() => DshNativeHostApi.Calls = Dispatcher;
 
     private NativePluginLibrary(nint library, DshPluginApi api)
     {
         _library = library;
-        _api = api;
+        _binding = new DshPluginApiBinding(api);
         Package = NativeUtf8.Read(api.Package);
     }
 
@@ -60,19 +50,7 @@ public sealed unsafe class NativePluginLibrary : INativePlugin
             return null;
         try
         {
-            if (!NativeLibrary.TryGetExport(library, DshNativePluginAbi.PackageExport, out _)
-                || !NativeLibrary.TryGetExport(library, DshNativePluginAbi.EntryPoint, out var entry))
-            {
-                NativeLibrary.Free(library);
-                return null;
-            }
-            var api = new DshPluginApi { AbiVersion = 0 };
-            var enter = (delegate* unmanaged[Cdecl]<DshHostApi*, DshPluginApi*, int>)entry;
-            if (enter(HostApi, &api) != DshNativePluginAbi.Ok
-                || api.AbiVersion != DshNativePluginAbi.Version
-                || api.Activate is null
-                || api.Deactivate is null
-                || api.InvokeTool is null)
+            if (!DshPluginApiBinding.TryHandshake(library, out var api))
             {
                 NativeLibrary.Free(library);
                 return null;
@@ -90,7 +68,7 @@ public sealed unsafe class NativePluginLibrary : INativePlugin
     {
         _host = host;
         _self = GCHandle.Alloc(this);
-        if (_api.Activate(GCHandle.ToIntPtr(_self).ToPointer()) != DshNativePluginAbi.Ok)
+        if (_binding.Activate(GCHandle.ToIntPtr(_self)) != DshNativePluginAbi.Ok)
         {
             _self.Free();
             _host = null;
@@ -102,7 +80,7 @@ public sealed unsafe class NativePluginLibrary : INativePlugin
     {
         if (_host is null)
             return;
-        _api.Deactivate(GCHandle.ToIntPtr(_self).ToPointer());
+        _binding.Deactivate(GCHandle.ToIntPtr(_self));
         _self.Free();
         _host = null;
     }
@@ -114,41 +92,24 @@ public sealed unsafe class NativePluginLibrary : INativePlugin
     }
 
     private string? InvokeTool(int handle, string inputJson)
+        => _binding.InvokeTool(GCHandle.ToIntPtr(_self), handle, inputJson);
+
+    private static NativePluginLibrary? FromHandle(nint context)
+        => context == 0 ? null : (NativePluginLibrary?)GCHandle.FromIntPtr(context).Target;
+
+    /** 生成蹦床的落地:从 ABI 上下文句柄找回插件实例,再走托管回调。 */
+    private sealed class Sink : IDshNativeHostCalls
     {
-        var bytes = Encoding.UTF8.GetBytes(inputJson);
-        fixed (byte* pinned = bytes)
+        public void Log(nint context, int level, string message)
+            => FromHandle(context)?._host?.Log(level, message);
+
+        public int RegisterTool(nint context, string name, string description, string parametersJson, int handle)
         {
-            var context = GCHandle.ToIntPtr(_self).ToPointer();
-            var needed = _api.InvokeTool(context, handle, pinned, null, 0);
-            if (needed < 0)
-                return null;
-            var buffer = new byte[needed + 1];
-            fixed (byte* target = buffer)
-            {
-                var written = _api.InvokeTool(context, handle, pinned, target, needed + 1);
-                return written < 0 ? null : Encoding.UTF8.GetString(buffer, 0, written);
-            }
+            var plugin = FromHandle(context);
+            if (plugin?._host is null)
+                return DshNativePluginAbi.Error;
+            plugin._host.RegisterTool(name, description, parametersJson, input => plugin.InvokeTool(handle, input));
+            return DshNativePluginAbi.Ok;
         }
-    }
-
-    private static NativePluginLibrary? FromHandle(void* context)
-        => context is null ? null : (NativePluginLibrary?)GCHandle.FromIntPtr((nint)context).Target;
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void LogTrampoline(void* context, int level, byte* message)
-        => FromHandle(context)?._host?.Log(level, NativeUtf8.Read(message));
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static int RegisterToolTrampoline(void* context, byte* name, byte* description, byte* parameters, int handle)
-    {
-        var plugin = FromHandle(context);
-        if (plugin is null)
-            return DshNativePluginAbi.Error;
-        plugin._host?.RegisterTool(
-            NativeUtf8.Read(name),
-            NativeUtf8.Read(description),
-            NativeUtf8.Read(parameters),
-            input => plugin.InvokeTool(handle, input));
-        return DshNativePluginAbi.Ok;
     }
 }

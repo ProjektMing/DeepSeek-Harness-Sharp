@@ -12,7 +12,9 @@ namespace Dsh.PlanMode;
 
 public sealed record PlanModeConfig
 {
-    public string Section { get; init; } = "";
+    public const string DefaultSection = "请针对我当前的需求和已有的上下文内容,制定出可行的计划";
+
+    public string Section { get; init; } = DefaultSection;
 }
 
 public sealed class PlanModeController : Service
@@ -46,7 +48,8 @@ public sealed class PlanModeController : Service
 
     public PlanModeController(Context ctx, PlanModeConfig? config = null) : base(ctx, ServiceName)
     {
-        var section = ResolveConfig(config ?? new PlanModeConfig()).Section;
+        var configured = config?.Section;
+        var section = string.IsNullOrWhiteSpace(configured) ? PlanModeConfig.DefaultSection : configured;
 
         ctx.OnWaterfall<AgentPreStepNotification>(PreStep, new EventOptions { Global = true });
         ctx.Effect(() => (Action)(() => _disposed = true), $"{PluginName}: close service lifetime");
@@ -293,10 +296,4 @@ public sealed class PlanModeController : Service
         return JsonDocument.Parse("""{"approved":true}""").RootElement;
     }
 
-    private static PlanModeConfig ResolveConfig(PlanModeConfig config)
-    {
-        if (string.IsNullOrWhiteSpace(config.Section))
-            throw new ArgumentException("PlanModeConfig needs a non-empty string `section`");
-        return config;
-    }
 }

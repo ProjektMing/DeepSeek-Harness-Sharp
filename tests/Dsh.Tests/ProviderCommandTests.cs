@@ -19,17 +19,16 @@ public sealed class ProviderCommandTests
                 global_default_model: null
                 providers: {}
                 """);
-            var ctx = new Context();
-            _ = new SystemPrompt(ctx, new SystemPromptConfig());
-            _ = new LlmRuntime(ctx);
-            var commands = CommandsService.Register(ctx);
-            using var registration = ProviderCommand.Register(ctx, new HarnessHome(home));
-            var agent = new FakeAgent(ctx);
+            using var app = await HarnessComposer.Compose(new HarnessOptions(new HarnessHome(home), Directory.GetCurrentDirectory()));
+            var commands = app.Ctx.Get<CommandsService>(CommandsService.ServiceName)!;
+            var agent = new FakeAgent(app.Ctx);
 
             var result = await commands.Execute(agent, "/provider add custom --base-url http://127.0.0.1:11434/v1 --api-key sk-test --model-ids custom-model");
 
             Assert.NotNull(result);
             Assert.IsType<CommandResult.Success>(result.Result);
+            var llm = app.Ctx.Get<LlmRuntime>(LlmRuntime.ServiceName)!;
+            Assert.Contains(llm.ListProviders(), provider => provider.Id == "custom");
             var settings = HarnessSettings.Load(new HarnessHome(home));
             Assert.Equal("custom/custom-model", settings.GlobalDefaultModel);
             Assert.True(settings.Providers["custom"].Models.ContainsKey("custom-model"));

@@ -30,10 +30,13 @@ public sealed class Plugin(string packageName) : IDshPlugin
     }
 
     private static PlanModeConfig PlanModeConfigFrom(object? config)
-        => new()
+    {
+        var section = (config as IReadOnlyDictionary<string, object?>)?.GetValueOrDefault("section") as string;
+        return new PlanModeConfig
         {
-            Section = (config as IReadOnlyDictionary<string, object?>)?.GetValueOrDefault("section") as string ?? "",
+            Section = string.IsNullOrWhiteSpace(section) ? PlanModeConfig.DefaultSection : section,
         };
+    }
 
     private sealed class NoopDisposable : IDisposable
     {

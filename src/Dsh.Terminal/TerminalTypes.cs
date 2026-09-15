@@ -119,6 +119,20 @@ public sealed record TerminalReadResult(string Text, int TotalLines, int LineBeg
 
 public sealed record TerminalSignalResult(bool Delivered, int TargetPgid);
 
+/** terminal_send 后台分支的工具返回值(具名类型:源生成上下文需要元数据)。 */
+public sealed record TerminalSendBackgroundResult(string Kind, string JobId);
+
+/** terminal_send 前台分支的工具返回值。 */
+public sealed record TerminalSendForegroundResult(
+    string Kind,
+    string Viewport,
+    string WaitReason,
+    TerminalSessionStatus SessionStatus,
+    bool Truncated);
+
+/** terminal_close 的工具返回值。 */
+public sealed record TerminalCloseResult(string SessionId, string Outcome);
+
 public sealed record TerminalSessionSnapshot(
     TerminalSessionId SessionId,
     string? Name,

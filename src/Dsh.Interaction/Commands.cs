@@ -1,4 +1,5 @@
 #pragma warning disable CA2255
+using Dsh.Plugins;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Dsh.Runtime;
@@ -287,9 +288,8 @@ public sealed partial class CommandsService : Service
 
 internal static class CommandCodecRegistration
 {
-    // 程序集加载即注册：命令事件可能在 CommandsService 构造之前被日志读写。
-    // ReSharper disable once All
-    [ModuleInitializer]
+    // 启动时由生成目录显式调用：命令事件可能在 CommandsService 构造之前被日志读写。
+    [DshPluginInitializer]
     internal static void Register()
     {
         SessionEventCodec.Register<CommandRunPayload>(CommandEvents.Run);

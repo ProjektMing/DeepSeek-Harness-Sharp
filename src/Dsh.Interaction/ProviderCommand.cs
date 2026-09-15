@@ -26,10 +26,10 @@ public static class ProviderCommand
             {
                 var tokens = invocation.RawInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (tokens.Length == 0)
-                    return Task.FromResult<CommandResult>(new CommandResult.Success(ListProviders(home)));
+                    return Task.FromResult<CommandResult>(new CommandResult.Success(ListProviders(ctx, home)));
                 return tokens[0] switch
                 {
-                    "list" => Task.FromResult<CommandResult>(new CommandResult.Success(ListProviders(home))),
+                    "list" => Task.FromResult<CommandResult>(new CommandResult.Success(ListProviders(ctx, home))),
                     "remove" when tokens.Length >= 2 => RemoveProvider(ctx, home, tokens[1]),
                     "add" => AddProvider(ctx, home, tokens[1..]),
                     _ => Task.FromResult<CommandResult>(new CommandResult.Error("usage: /provider list | add <name> --base-url <url> --api-key <key> [--type ...] [--model-ids ...] | remove <name>")),
@@ -38,15 +38,24 @@ public static class ProviderCommand
         });
     }
 
-    private static string ListProviders(HarnessHome home)
+    private static string ListProviders(Context ctx, HarnessHome home)
     {
         var settings = HarnessSettings.Load(home);
         if (settings.Providers.Count == 0)
             return "no providers configured";
+        var llm = ctx.Get<LlmRuntime>(LlmRuntime.ServiceName, false);
+        var factories = ctx.Get<LlmAdapterFactoryRegistry>(LlmAdapterFactoryRegistry.ServiceName, false);
         return string.Join('\n', settings.Providers.Select(entry =>
         {
             var models = entry.Value.Models.Count > 0 ? $" models=[{string.Join(',', entry.Value.Models.Keys)}]" : "";
-            return $"{entry.Key}: {entry.Value.Type} {entry.Value.Options?.BaseUrl}{models}";
+            var wire = string.IsNullOrWhiteSpace(entry.Value.Type) ? ProviderRegistrar.DefaultWire : entry.Value.Type;
+            var source = factories is not null && factories.TryResolve(wire, out var resolvedSource, out _)
+                ? resolvedSource
+                : null;
+            var adapter = llm?.ListProviders().FirstOrDefault(provider => provider.Id == entry.Key);
+            var state = adapter is not null ? $"active ({adapter.Name})" : "inactive";
+            var served = source is null ? $"no adapter plugin serves type \"{wire}\"" : $"served by {source}";
+            return $"{entry.Key}: type={wire} {state}, {served}, baseUrl={entry.Value.Options?.BaseUrl}{models}";
         }));
     }
 
@@ -135,20 +144,11 @@ public static class ProviderCommand
             Memory = settings.Memory,
         };
         updated.Save(home);
-        try
-        {
-            var llm = ctx.Get<LlmRuntime>(LlmRuntime.ServiceName)!;
-            var credentials = new EnvCredentials(home, Environment.CurrentDirectory);
-            var options = new HarnessOptions(home, Environment.CurrentDirectory);
-            var handle = ProviderAdapterRegistrar.RegisterProviderAdapter(ctx, name, provider, baseUrl, null, apiKey, options, credentials, llm);
-            if (handle is null)
-                return new CommandResult.Error($"provider \"{name}\" saved but not activated: API key is empty");
-            return new CommandResult.Success($"added provider \"{name}\" with {models.Count} model(s)");
-        }
-        catch (Exception error)
-        {
-            return new CommandResult.Error($"provider \"{name}\" saved but could not be activated: {error.Message}");
-        }
+        var options = new HarnessOptions(home, Environment.CurrentDirectory);
+        var result = ProviderRegistrar.RegisterProvider(ctx, options, name, provider, isDefault: true);
+        if (result.Handle is null)
+            return new CommandResult.Error($"provider \"{name}\" saved but not activated: {result.Error}");
+        return new CommandResult.Success($"added provider \"{name}\" with {models.Count} model(s)");
     }
 
     private static async Task<Dictionary<string, ProviderModelSettings>> FetchModelsAsync(string baseUrl, string apiKey)

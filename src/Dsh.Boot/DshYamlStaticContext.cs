@@ -12,6 +12,7 @@ namespace Dsh.Boot;
 [YamlSerializable(typeof(CompactionSettings))]
 [YamlSerializable(typeof(SafetySettings))]
 [YamlSerializable(typeof(MemorySettings))]
+[YamlSerializable(typeof(MemoryMongoSettings))]
 [YamlSerializable(typeof(McpServerSettings))]
 [YamlSerializable(typeof(CheckpointsSettings))]
 [YamlSerializable(typeof(LoggingSettings))]

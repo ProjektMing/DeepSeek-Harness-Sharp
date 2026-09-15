@@ -45,7 +45,7 @@ public class ConfigBootTests
 
             Assert.NotNull(app.Ctx.Get<LocalFsService>(LocalFsService.ServiceName));
 
-            // 用户 settings.yaml 未列出的插件由默认清单补齐
+            // 用户 settings.yaml 未列出的插件发现即启用
             Assert.Equal(ActivationState.Active, app.Composition!.Find("@deepseek-ai/dsh-checkpoints")?.State);
             Assert.Equal(ActivationState.Active, app.Composition.Find("@deepseek-ai/dsh-ide-history")?.State);
 

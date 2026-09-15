@@ -28,6 +28,7 @@ public sealed class Plugin(string packageName) : IDshPlugin
         _ = new SystemPrompt(ctx, SystemPromptConfigFrom(config));
         _ = new ToolRuntime(ctx);
         _ = new LlmRuntime(ctx);
+        _ = new LlmAdapterFactoryRegistry(ctx);
         _ = new AgentRegistry(ctx);
         var persistence = ctx.Get<ISessionPersistence>("sessionPersistence", false);
         _ = new AgentLoop(ctx, AgentLoopConfigFrom(config), persistence is null ? null : _ => persistence);

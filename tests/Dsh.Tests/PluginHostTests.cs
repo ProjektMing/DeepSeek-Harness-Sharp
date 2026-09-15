@@ -9,27 +9,20 @@ namespace Dsh.Tests;
 public sealed class PluginHostTests
 {
     [Fact]
-    public void RegisterAssembly_TryCreate_AppliesPlugin()
-    {
-        var catalog = new PluginCatalog();
-        catalog.RegisterAssembly(typeof(PluginHostTests).Assembly);
-
-        Assert.True(catalog.TryCreate("test/local", out var plugin));
-        var testPlugin = Assert.IsType<TestPlugin>(plugin);
-        Assert.Empty(testPlugin.Inject);
-
-        using var registration = testPlugin.Apply(new Context(), null);
-        Assert.True(TestPlugin.Applied);
-    }
-
-    [Fact]
-    public async Task ScanDirectory_RegistersDefinitionAndActivates()
+    public async Task RegisterCompiledIn_RegistersDefinitionAndActivates()
     {
         TestPlugin.Applied = false;
         var host = new PluginHost();
-        host.ScanDirectory(AppContext.BaseDirectory);
+        host.RegisterCompiledIn();
 
+        Assert.True(host.Catalog.TryDescribe("test/local", out var descriptor));
+        Assert.Equal(PluginForm.CompiledIn, descriptor.Form);
         Assert.True(host.Catalog.TryCreateDefinition("test/local", out var definition));
+
+        // 入口描述符随插件清单生成:丢掉接线(如 Web/Lsp 在重构中丢过)会在这里暴露。
+        Assert.Contains(host.Catalog.Descriptors, entry => entry.Entry == "web");
+        Assert.Contains(host.Catalog.Descriptors, entry => entry.Entry == "lsp");
+        Assert.Contains(host.Catalog.Descriptors, entry => entry.Package == "@deepseek-ai/dsh-tool-web");
 
         var ctx = new Context();
         var activation = ctx.Plugin(definition!);

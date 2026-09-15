@@ -10,6 +10,23 @@ namespace Dsh.Tests;
 
 public sealed class SdkTests
 {
+    /** 零配置不兜底后,SDK 测试需要显式 provider 配置;baseUrl 指向回环端口避免真实网络请求。 */
+    private static void WriteProviderSettings(string home)
+    {
+        Directory.CreateDirectory(home);
+        File.WriteAllText(Path.Combine(home, "settings.yaml"), """
+            global_default_model: deepseek-official/deepseek-v4-flash
+            providers:
+              deepseek-official:
+                type: openai-compatible
+                options:
+                  baseUrl: http://127.0.0.1:9
+                  apiKey: sk-test
+                models:
+                  deepseek-v4-flash: {}
+            """);
+    }
+
     [Fact]
     public async Task Transport_HandlesIncomingRequestAndWritesResponse()
     {
@@ -72,6 +89,7 @@ public sealed class SdkTests
     public async Task SdkServer_InitializeAndPromptThroughCSharpClient()
     {
         var home = Path.Combine(AppContext.BaseDirectory, "sdk-test-home", Guid.NewGuid().ToString("N"));
+        WriteProviderSettings(home);
         using (var app = await HarnessComposer.Compose(new HarnessOptions(new HarnessHome(home), Directory.GetCurrentDirectory())))
         {
             var pair = new DuplexTransportPair();
@@ -106,6 +124,7 @@ public sealed class SdkTests
     public async Task SdkServer_ServiceGateway_CallsServices()
     {
         var home = Path.Combine(AppContext.BaseDirectory, "sdk-test-home", Guid.NewGuid().ToString("N"));
+        WriteProviderSettings(home);
         using (var app = await HarnessComposer.Compose(new HarnessOptions(new HarnessHome(home), Directory.GetCurrentDirectory())))
         {
             var pair = new DuplexTransportPair();
@@ -125,6 +144,7 @@ public sealed class SdkTests
     public async Task SdkServer_EmitsSessionEventNotificationToCSharpClient()
     {
         var home = Path.Combine(AppContext.BaseDirectory, "sdk-test-home", Guid.NewGuid().ToString("N"));
+        WriteProviderSettings(home);
         using (var app = await HarnessComposer.Compose(new HarnessOptions(new HarnessHome(home), Directory.GetCurrentDirectory())))
         {
             var pair = new DuplexTransportPair();
@@ -160,6 +180,7 @@ public sealed class SdkTests
     public async Task SdkServer_AcceptsTsWireInitializeRequest()
     {
         var home = Path.Combine(AppContext.BaseDirectory, "sdk-test-home", Guid.NewGuid().ToString("N"));
+        WriteProviderSettings(home);
         using (var app = await HarnessComposer.Compose(new HarnessOptions(new HarnessHome(home), Directory.GetCurrentDirectory())))
         {
             var input = new StringReader("""

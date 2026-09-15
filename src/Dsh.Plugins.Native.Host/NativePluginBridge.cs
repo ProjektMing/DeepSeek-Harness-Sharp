@@ -33,6 +33,9 @@ public static class NativePluginBridge
             return new Deactivation(plugin, registrations);
         }, name: plugin.Package);
 
+    /** 把原生插件包装成 IDshPlugin,使插件目录只保留一种登记形态。 */
+    public static IDshPlugin AsPlugin(INativePlugin plugin) => new NativePluginAdapter(plugin);
+
     private static JsonObject Parse(string json) => JsonNode.Parse(json)!.AsObject();
 
     private static string Render(JsonElement value)
@@ -113,5 +116,13 @@ public static class NativePluginBridge
                 registration.Dispose();
             plugin.Deactivate();
         }
+    }
+
+    private sealed class NativePluginAdapter(INativePlugin plugin) : IDshPlugin
+    {
+        public string[] Inject => [];
+
+        public IDisposable Apply(Context ctx, object? config)
+            => (IDisposable)CreateDefinition(plugin).Apply(ctx, config)!;
     }
 }

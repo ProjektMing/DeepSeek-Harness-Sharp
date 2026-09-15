@@ -1,0 +1,20 @@
+<Project>
+
+  <!-- 宿主程序接入点:引入生成器,产出聚合目录 DshPluginCatalog,并以模块初始化自注册。 -->
+  <PropertyGroup>
+    <DshPluginHost>true</DshPluginHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Analyzer Include="$(MSBuildThisFileDirectory)bin\$(Configuration)\netstandard2.0\Dsh.Plugins.Generator.dll" />
+    <CompilerVisibleProperty Include="DshPluginHost" />
+  </ItemGroup>
+
+  <Target Name="BuildDshPluginGenerator" BeforeTargets="CoreCompile">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)Dsh.Plugins.Generator.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;PublishAot;SelfContained" />
+  </Target>
+
+</Project>

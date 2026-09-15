@@ -349,15 +349,10 @@ public static class SubagentTool
 
     public static SubagentToolConfig ParseConfig(object? config)
     {
-        var dict = config as IReadOnlyDictionary<string, object?>
-            ?? throw new ArgumentException(
-                "tool-subagent: `provider` is required — register a subagent provider, then set `provider` to its name");
+        var dict = config as IReadOnlyDictionary<string, object?> ?? new Dictionary<string, object?>();
         var provider = dict.GetValueOrDefault("provider") as string;
         if (string.IsNullOrEmpty(provider))
-        {
-            throw new ArgumentException(
-                "tool-subagent: `provider` is required — register a subagent provider, then set `provider` to its name");
-        }
+            provider = SpawnInProcessProvider.DefaultProviderName;
         if (dict.GetValueOrDefault("modelSelectionSettings") is true)
         {
             throw new NotSupportedException(

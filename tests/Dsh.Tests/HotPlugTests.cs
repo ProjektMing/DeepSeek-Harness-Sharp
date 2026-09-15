@@ -92,13 +92,16 @@ public sealed class HotPlugTests
             var manager = app.Ctx.Get<HarnessPluginManager>("pluginManager")!;
             var pluginPath = Path.Combine(AppContext.BaseDirectory, "Dsh.Tests.dll");
             Assert.True(File.Exists(pluginPath), $"plugin assembly not found: {pluginPath}");
-            Assert.Null(app.Composition!.Find("test/local"));
+            // 测试程序集本身在镜像内;禁用它之后,再作为托管程序集从文件装入可回收 ALC。
+            Assert.Equal(ActivationState.Active, app.Composition!.Find("test/local")!.State);
+            Assert.Contains("removed", await manager.RemoveAsync("test/local"));
+            Assert.Null(app.Composition.Find("test/local"));
 
             var added = await manager.AddAsync(pluginPath);
 
             Assert.Contains("activated", added);
             Assert.Equal(ActivationState.Active, app.Composition.Find("test/local")!.State);
-            Assert.Equal("active", manager.Describe("test/local"));
+            Assert.StartsWith("active [managed-assembly", manager.Describe("test/local"));
 
             var removed = await manager.RemoveAsync("test/local");
 

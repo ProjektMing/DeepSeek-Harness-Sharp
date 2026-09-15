@@ -1,5 +1,6 @@
 using Dsh.Runtime;
 using Dsh.Plugins;
+using System.Runtime.CompilerServices;
 
 namespace Dsh.Interaction;
 
@@ -23,11 +24,11 @@ public static class PluginCommand
                         .Distinct()
                         .OrderBy(name => name, StringComparer.Ordinal);
                     var lines = names.Select(name => manager is null ? name : $"{name}: {manager.Describe(name)}");
-                    var mode = manager is null
-                        ? "dynamic add/remove: unavailable"
-                        : $"dynamic add/remove: {(manager.SupportsDynamicLoad ? "available" : "unavailable (NativeAOT)")}";
+                    var ops = RuntimeFeature.IsDynamicCodeSupported
+                        ? "ops: list | add <pkg|path> | remove <pkg> [--force] | disable <pkg> | enable <pkg>"
+                        : "ops: list | remove <pkg> [--force] | disable <pkg> | enable <pkg> (runtime load unavailable in NativeAOT)";
                     return Task.FromResult<CommandResult>(
-                        new CommandResult.Success($"{string.Join('\n', lines)}\n{mode}"));
+                        new CommandResult.Success($"{string.Join('\n', lines)}\n{ops}"));
                 }
                 if (manager is null)
                 {

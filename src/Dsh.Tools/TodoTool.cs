@@ -7,6 +7,11 @@ namespace Dsh.Tools;
 
 public sealed record TodoItem(string Content, string Status);
 
+/** 待办计数:工具返回值的一部分,必须是可源生成序列化的具名类型(AOT 下无反射回退)。 */
+public sealed record TodoCounts(int Pending, int InProgress, int Completed);
+
+public sealed record TodoWriteResult(IReadOnlyList<TodoItem> Todos, TodoCounts Counts);
+
 public sealed record TodoWritePayload(IReadOnlyList<TodoItem> Todos) : SessionEventPayload
 {
     public const string EventType = "todo/write";
@@ -133,16 +138,8 @@ public static class TodoWriteTool
         if (exec.Agent is null)
             throw new InvalidOperationException("todo_write requires an owning agent session");
         exec.Agent.Session.Append(new TodoWritePayload(todos));
-        return Task.FromResult<object?>(new
-        {
-            todos,
-            counts = new
-            {
-                pending = Count(todos, "pending"),
-                inProgress = Count(todos, "in_progress"),
-                completed = Count(todos, "completed"),
-            },
-        });
+        var counts = new TodoCounts(Count(todos, "pending"), Count(todos, "in_progress"), Count(todos, "completed"));
+        return Task.FromResult<object?>(new TodoWriteResult(todos, counts));
     }
 
     private static int Count(IReadOnlyList<TodoItem> todos, string status)

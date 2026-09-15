@@ -22,7 +22,7 @@ public static class MemoryCommand
         systemPrompt.Context(new PromptContext(
             MemoryContextName,
             MemoryContextOrder,
-            _ => MemoryContextText(options)));
+            _ => MemoryContextText(ctx, options)));
 
         return commands.Register(new CommandDefinition
         {
@@ -47,7 +47,13 @@ public static class MemoryCommand
                     McpServers = settings.McpServers,
                     Compaction = settings.Compaction,
                     Safety = settings.Safety,
-                    Memory = new MemorySettings { Enabled = enabled, File = settings.Memory?.File },
+                    Memory = new MemorySettings
+                    {
+                        Enabled = enabled,
+                        File = settings.Memory?.File,
+                        Backend = settings.Memory?.Backend,
+                        Mongo = settings.Memory?.Mongo,
+                    },
                 };
                 updated.Save(options.Home);
                 return Task.FromResult<CommandResult>(new CommandResult.Success($"project memory {raw}"));
@@ -59,6 +65,14 @@ public static class MemoryCommand
     {
         if (!IsEnabled(options))
             return "";
+        if (IsMongoBackend(options))
+        {
+            return $"""
+                Project memory is enabled (store: {DescribeStore(options)}).
+                Maintain it with the memory_write tool: replace the whole markdown content when project facts, decisions, conventions, or corrections change.
+                Keep entries concise, actionable, and grouped by topic.
+                """;
+        }
         var path = ResolveMemoryPath(options);
         return $"""
             Project memory is enabled.
@@ -68,14 +82,39 @@ public static class MemoryCommand
             """;
     }
 
-    private static string MemoryContextText(HarnessOptions options)
+    private static string MemoryContextText(Context ctx, HarnessOptions options)
     {
         if (!IsEnabled(options))
             return "";
+        if (ctx.Get<IMemoryStore>(MemoryServices.Store, false) is { } store)
+        {
+            string? text;
+            try
+            {
+                text = store.GetAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception error)
+            {
+                return $"Project memory ({store.Description}) is unavailable: {error.Message}";
+            }
+            return text is null
+                ? $"Project memory ({store.Description}) is empty; record project knowledge when you learn it."
+                : $"Project memory ({store.Description}):\n\n{text}";
+        }
         var path = ResolveMemoryPath(options);
         if (!File.Exists(path))
             return $"Project memory ({path}) does not exist yet. Create it when you record project knowledge.";
         return $"Project memory ({path}):\n\n{File.ReadAllText(path)}";
+    }
+
+    private static bool IsMongoBackend(HarnessOptions options)
+        => string.Equals(HarnessSettings.Load(options.Home).Memory?.Backend, "mongo", StringComparison.OrdinalIgnoreCase);
+
+    private static string DescribeStore(HarnessOptions options)
+    {
+        var memory = HarnessSettings.Load(options.Home).Memory;
+        var mongo = memory?.Mongo;
+        return mongo is null ? "mongo" : $"{mongo.Database}.{mongo.Collection}#{mongo.Key ?? "project"}";
     }
 
     private static bool IsEnabled(HarnessOptions options)

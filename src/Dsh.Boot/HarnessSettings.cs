@@ -68,7 +68,7 @@ public sealed class HarnessSettings
             .IgnoreUnmatchedProperties()
             .Build();
         var settings = deserializer.Deserialize<HarnessSettings>(text);
-        settings.Plugins = PluginManifest.ParseYaml(text);
+        settings.Plugins = PluginSettingsSection.ParseDocument(text);
         return settings;
     }
 
@@ -194,6 +194,29 @@ public sealed class MemorySettings
 
     [YamlMember(Alias = "file")]
     public string? File { get; set; }
+
+    /** 后端:file(默认,markdown 文件)或 mongo。 */
+    [YamlMember(Alias = "backend")]
+    public string? Backend { get; set; }
+
+    [YamlMember(Alias = "mongo")]
+    public MemoryMongoSettings? Mongo { get; set; }
+}
+
+public sealed class MemoryMongoSettings
+{
+    [YamlMember(Alias = "connectionString")]
+    public string ConnectionString { get; set; } = "mongodb://localhost:27017";
+
+    [YamlMember(Alias = "database")]
+    public string Database { get; set; } = "dsh_memory";
+
+    [YamlMember(Alias = "collection")]
+    public string Collection { get; set; } = "memory";
+
+    /** 文档 key;缺省 project。 */
+    [YamlMember(Alias = "key")]
+    public string? Key { get; set; }
 }
 
 public sealed class CheckpointsSettings

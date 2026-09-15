@@ -513,7 +513,8 @@ public sealed class AgentLoopAgent : IAgent
         if (string.IsNullOrEmpty(proposedConfig.Provider) || string.IsNullOrEmpty(proposedConfig.Model))
         {
             throw new InvalidOperationException(
-                $"agent \"{Id}\" has no provider/model: set AgentOptions.provider and AgentOptions.model or supply both via the agent/request waterfall");
+                "no LLM provider/model is configured: set them in settings.yaml (`global_default_model` as provider/model, "
+                + "or a `providers` entry), or supply them via AgentOptions/the agent-request waterfall");
         }
         var llm = _loopCtx.Get<LlmRuntime>(LlmRuntime.ServiceName)
             ?? throw new InvalidOperationException("agent loop requires the llm service");

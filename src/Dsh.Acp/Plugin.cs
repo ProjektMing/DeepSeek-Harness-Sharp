@@ -30,8 +30,8 @@ public sealed class Plugin : IDshPlugin
         if (ctx.GetProp("harnessOptions") is not HarnessOptions options)
             return (null, null);
         var fallback = HarnessSettings.Load(options.Home).ResolveDefaultModel();
-        return (options.Provider ?? fallback?.Provider ?? HarnessComposer.DefaultProvider,
-            options.Model ?? fallback?.Model ?? HarnessComposer.DefaultModel);
+        return (options.Provider ?? fallback?.Provider,
+            options.Model ?? fallback?.Model);
     }
 
     private sealed class CallbackDisposable(Action? dispose = null) : IDisposable

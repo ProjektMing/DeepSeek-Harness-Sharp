@@ -54,6 +54,9 @@ public sealed class SessionQueryIndex : IDisposable
 
     public IReadOnlyList<SessionQueryHit> Search(string query, int limit = 20)
     {
+        var match = BuildMatch(query);
+        if (match.Length == 0)
+            return [];
         using var command = _connection.CreateCommand();
         command.CommandText = """
             SELECT session_id, seq, type, snippet(docs, 0, '[', ']', '...', 8) AS snippet
@@ -61,7 +64,7 @@ public sealed class SessionQueryIndex : IDisposable
             WHERE docs MATCH $query
             LIMIT $limit
             """;
-        command.Parameters.AddWithValue("$query", query);
+        command.Parameters.AddWithValue("$query", match);
         command.Parameters.AddWithValue("$limit", limit);
         using var reader = command.ExecuteReader();
         var hits = new List<SessionQueryHit>();
@@ -74,6 +77,14 @@ public sealed class SessionQueryIndex : IDisposable
                 reader.IsDBNull(3) ? "" : reader.GetString(3)));
         }
         return hits;
+    }
+
+    /** 用户输入按词逐个加引号,避免 FTS5 语法字符(-、OR、引号)被当作操作符或报错。 */
+    private static string BuildMatch(string query)
+    {
+        var tokens = query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(token => "\"" + token.Replace("\"", "\"\"") + "\"");
+        return string.Join(" AND ", tokens);
     }
 
     public void Dispose()
