@@ -5,7 +5,7 @@ namespace Dsh.Tests;
 
 public sealed class MongoMemoryStoreTests
 {
-    [Fact]
+    [MongoFact]
     public async Task WritesAndReadsMemoryThroughMongo()
     {
         const string connectionString = "mongodb://localhost:27017";

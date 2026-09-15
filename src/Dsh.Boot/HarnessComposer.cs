@@ -50,6 +50,15 @@ public sealed class HarnessApp : IDisposable
 
     public void Dispose()
     {
+        // 先让插件把效果放掉(编译进镜像的插件不走协作式卸载), 再拆基础设施; 否则文件句柄之类的资源会留到进程结束。
+        try
+        {
+            Composition?.DeactivateAll();
+        }
+        catch (Exception error)
+        {
+            Ctx.LoggerFor("shutdown").Warn("%s", $"plugin deactivation failed: {error.Message}");
+        }
         List<Exception>? errors = null;
         foreach (var disposable in ((IEnumerable<IDisposable>)_disposables).Reverse())
         {

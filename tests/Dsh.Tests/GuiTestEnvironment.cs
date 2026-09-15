@@ -44,13 +44,10 @@ public sealed class GuiTestEnvironment : IDisposable
         return new GuiTestEnvironment(_directory, app, await CreateAgentAsync(app, _directory));
     }
 
-    /** 关掉会长期占用 home 文件的插件(文件日志/遥测), 让同一 home 可以被连续 compose 多次。 */
+    /** 关掉文件日志:它的句柄释放时机不受测试控制,会让临时目录清理偶发失败。 */
     public const string HomeSettings = """
         logging:
           file: false
-        plugins:
-          "@deepseek-ai/dsh-telemetry":
-            enabled: false
         """;
 
     private static async Task<AgentLoopAgent> CreateAgentAsync(HarnessApp app, string cwd)

@@ -7,6 +7,7 @@ using Dsh.Tools;
 
 namespace Dsh.Tests;
 
+[Collection(SerialProcessCollection.Name)]
 public class JobsTests : IDisposable
 {
     private readonly Context _ctx;
@@ -142,6 +143,7 @@ public class JobsTests : IDisposable
             Thread.Sleep(20);
     }
 
+    [Collection(SerialProcessCollection.Name)]
     public sealed class Lifecycle : IDisposable
     {
         private readonly JobsTests _outer = new();
@@ -285,6 +287,7 @@ public class JobsTests : IDisposable
         }
     }
 
+    [Collection(SerialProcessCollection.Name)]
     public sealed class Isolation : IDisposable
     {
         private readonly JobsTests _outer = new();
@@ -366,6 +369,7 @@ public class JobsTests : IDisposable
         }
     }
 
+    [Collection(SerialProcessCollection.Name)]
     public sealed class OutputLimit : IDisposable
     {
         private readonly JobsTests _outer = new();
@@ -391,6 +395,7 @@ public class JobsTests : IDisposable
         }
     }
 
+    [Collection(SerialProcessCollection.Name)]
     public sealed class PersistentBash : IDisposable
     {
         private readonly JobsTests _outer = new();

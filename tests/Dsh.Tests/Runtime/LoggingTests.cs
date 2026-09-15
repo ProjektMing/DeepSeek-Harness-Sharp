@@ -72,7 +72,7 @@ public class LoggingTests
             var ctx = new Context(setup);
             ctx.LoggerFor("test").Info("hello file");
             var file = Assert.Single(Directory.GetFiles(directory, "dsh-*.log"));
-            var content = File.ReadAllText(file);
+            var content = ReadWhileWriting(file);
             Assert.Contains("logging started", content);
             Assert.Contains("test: hello file", content);
         }
@@ -133,7 +133,7 @@ public class LoggingTests
             using var setup = LoggingSetup.Create(new LoggingOptions(), directory);
             var ctx = new Context(setup);
             ctx.LoggerFor("test").Info("second run");
-            var content = File.ReadAllText(file);
+            var content = ReadWhileWriting(file);
             Assert.StartsWith("previous run", content);
             Assert.Contains("second run", content);
         }
@@ -164,6 +164,14 @@ public class LoggingTests
         {
             Console.SetOut(original);
         }
+    }
+
+    /** provider 还开着写句柄, 读取方必须声明共享写权限(Windows 的共享模式会双向校验)。 */
+    private static string ReadWhileWriting(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 
     private static string CreateScratchDirectory()

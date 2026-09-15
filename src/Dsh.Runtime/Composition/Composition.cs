@@ -39,6 +39,13 @@ public sealed class Composition
     public async Task<PluginActivation> AddAsync(PluginDefinition definition, object? config = null)
         => await _root.Scheduler.AddAsync(definition, config);
 
+    /** 关闭时释放所有插件的效果:编译进镜像的插件不经过协作式卸载,文件句柄/订阅这类资源必须在这里放掉。 */
+    public void DeactivateAll()
+    {
+        foreach (var activation in Activations)
+            activation.DisposeEffectsAsync().GetAwaiter().GetResult();
+    }
+
     private static List<string> CollectFailures(Context root)
     {
         var failures = new List<string>();

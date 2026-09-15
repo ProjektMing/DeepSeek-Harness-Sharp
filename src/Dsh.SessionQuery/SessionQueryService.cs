@@ -4,15 +4,22 @@ using Dsh.Runtime;
 namespace Dsh.SessionQuery;
 
 /** 会话全文检索:活会话按事件数、历史会话按持久层 Revision 增量刷新内存索引。 */
-public sealed class SessionQueryService(Context ctx) : Service(ctx, ServiceName), IDisposable
+public sealed class SessionQueryService : Service, IDisposable
 {
     public const string ServiceName = "sessionQuery";
 
     private const string PersistenceServiceName = "sessionPersistence";
 
-    private readonly SessionQueryIndex _index = new();
+    private readonly SessionQueryIndex _index;
     private readonly Dictionary<string, string> _versions = new(StringComparer.Ordinal);
     private readonly Lock _gate = new();
+
+    public SessionQueryService(Context ctx) : base(ctx, ServiceName)
+    {
+        _index = new SessionQueryIndex();
+        if (!_index.UsesFullText)
+            Ctx.Logger.Warn("%s", "sqlite3 is unavailable: session search falls back to local text matching");
+    }
 
     public IReadOnlyList<SessionQueryHit> Search(string query, int limit = 20)
     {

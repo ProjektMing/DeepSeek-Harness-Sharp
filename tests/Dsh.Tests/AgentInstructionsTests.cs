@@ -45,7 +45,7 @@ public sealed class AgentInstructionsTests
         }
     }
 
-    [Fact]
+    [NoInheritedAgentsMdFact]
     public async Task MissingAgentsMdSilentlySkips()
     {
         var root = Path.Combine(Path.GetTempPath(), "dsh-agents-md", Guid.NewGuid().ToString("N"));
@@ -90,6 +90,35 @@ public sealed class AgentInstructionsTests
         finally
         {
             Directory.Delete(root, true);
+        }
+    }
+}
+
+/**
+ * "缺失 AGENTS.md 就静默跳过"的前提是: 从临时目录到用户 profile 这条链上没有 AGENTS.md。
+ * 开发者自己可能在那里放了全局指令(设计上会被并入), 此时跳过而不是假失败。
+ */
+public sealed class NoInheritedAgentsMdFactAttribute : FactAttribute
+{
+    public NoInheritedAgentsMdFactAttribute()
+    {
+        if (InheritedAgentsMdExists())
+            Skip = "an AGENTS.md already exists between the temp directory and the user profile";
+    }
+
+    private static bool InheritedAgentsMdExists()
+    {
+        var profile = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        var directory = Path.GetFullPath(Path.GetTempPath());
+        while (true)
+        {
+            if (File.Exists(Path.Combine(directory, "AGENTS.md")))
+                return true;
+            if (string.Equals(directory, profile, StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (Directory.GetParent(directory) is not { } parent)
+                return false;
+            directory = parent.FullName;
         }
     }
 }

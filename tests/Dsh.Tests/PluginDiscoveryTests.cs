@@ -13,24 +13,49 @@ public sealed class PluginDiscoveryTests
         Directory.CreateDirectory(folder);
         try
         {
-            File.Copy(source, Path.Combine(folder, "Dsh.Goal.dll"));
-            var host = new PluginHost();
-
-            var result = host.Scan(folder, nativeBridge: null);
-
-            Assert.Empty(result.Skipped);
-            Assert.Contains(result.Managed, entry => entry.Package == "@deepseek-ai/dsh-goal");
-            Assert.True(host.Catalog.TryDescribe("@deepseek-ai/dsh-goal", out var descriptor));
-            Assert.Equal(PluginForm.ManagedAssembly, descriptor.Form);
-            Assert.True(descriptor.Capabilities.HasFlag(PluginCapabilities.Unload));
-            Assert.True(host.Catalog.TryCreateDefinition("@deepseek-ai/dsh-goal", out var definition));
-            Assert.NotNull(definition);
-            foreach (var entry in result.Managed)
-                entry.Context.Unload();
+            ScanAndUnload(source, folder);
         }
         finally
         {
-            Directory.Delete(folder, true);
+            DeletePluginFolder(folder);
+        }
+    }
+
+    /** 扫描与断言独立成方法: 返回后 host/catalog 的强引用随栈帧消失, ALC 才可能被回收。 */
+    private static void ScanAndUnload(string source, string folder)
+    {
+        File.Copy(source, Path.Combine(folder, "Dsh.Goal.dll"));
+        var host = new PluginHost();
+
+        var result = host.Scan(folder, nativeBridge: null);
+
+        Assert.Empty(result.Skipped);
+        Assert.Contains(result.Managed, entry => entry.Package == "@deepseek-ai/dsh-goal");
+        Assert.True(host.Catalog.TryDescribe("@deepseek-ai/dsh-goal", out var descriptor));
+        Assert.Equal(PluginForm.ManagedAssembly, descriptor.Form);
+        Assert.True(descriptor.Capabilities.HasFlag(PluginCapabilities.Unload));
+        Assert.True(host.Catalog.TryCreateDefinition("@deepseek-ai/dsh-goal", out var definition));
+        Assert.NotNull(definition);
+        foreach (var entry in result.Managed)
+            entry.Context.Unload();
+    }
+
+    /** Windows 上已装载的程序集要等 ALC 真正回收后才能删除;卸载是异步的,这里等它一小会儿。 */
+    private static void DeletePluginFolder(string folder)
+    {
+        for (var attempt = 0; ; attempt += 1)
+        {
+            try
+            {
+                Directory.Delete(folder, true);
+                return;
+            }
+            catch (Exception error) when (attempt < 50 && error is IOException or UnauthorizedAccessException)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Thread.Sleep(100);
+            }
         }
     }
 }

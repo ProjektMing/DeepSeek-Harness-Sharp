@@ -9,13 +9,22 @@ public sealed class TelemetryService : Service, IDisposable
 {
     public const string ServiceName = "telemetry";
 
-    private readonly StreamWriter _writer;
+    private readonly StreamWriter? _writer;
     private bool _failed;
 
     public TelemetryService(Context ctx, string outputPath) : base(ctx, ServiceName)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
-        _writer = new StreamWriter(outputPath, append: true) { AutoFlush = true };
+        // 遥测是可选能力: 文件建不出来/写不进去只记 WARN 并空转, 不能阻断整个 harness 启动。
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
+            _writer = new StreamWriter(outputPath, append: true) { AutoFlush = true };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            _failed = true;
+            Ctx.Logger.Warn("%s", $"telemetry disabled: cannot write {outputPath}: {error.Message}");
+        }
     }
 
     public void AgentSessionStarted(string sessionId, string source)
@@ -30,7 +39,7 @@ public sealed class TelemetryService : Service, IDisposable
     /** 只接收具名 payload 类型:运行期类型必须能由 DshTelemetryJsonContext 提供元数据(AOT 无反射回退)。 */
     public void Record<T>(string eventName, T payload)
     {
-        if (_failed)
+        if (_failed || _writer is null)
             return;
         try
         {
@@ -53,7 +62,7 @@ public sealed class TelemetryService : Service, IDisposable
     {
         try
         {
-            _writer.Dispose();
+            _writer?.Dispose();
         }
         catch (IOException)
         {
