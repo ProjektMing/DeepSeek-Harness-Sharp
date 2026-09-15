@@ -58,6 +58,7 @@
     <ProjectReference Include="..\..\src\Dsh.SessionQuery\Dsh.SessionQuery.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Memory\Dsh.Memory.csproj" />
     <ProjectReference Include="..\..\src\Dsh.Pty\Dsh.Pty.csproj" />
+    <ProjectReference Include="..\..\src\Dsh.Gui\Dsh.Gui.csproj" />
   </ItemGroup>
 
   <ItemGroup>

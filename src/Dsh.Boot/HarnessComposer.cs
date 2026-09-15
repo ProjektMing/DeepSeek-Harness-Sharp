@@ -31,8 +31,21 @@ public sealed class HarnessApp : IDisposable
 
     public void Dispose()
     {
+        List<Exception>? errors = null;
         foreach (var disposable in ((IEnumerable<IDisposable>)_disposables).Reverse())
-            disposable.Dispose();
+        {
+            try
+            {
+                disposable.Dispose();
+            }
+            catch (Exception error)
+            {
+                // 任何一个关闭失败都不能阻断其余清理(例如日志文件句柄必须释放)。
+                (errors ??= []).Add(error);
+            }
+        }
+        if (errors is not null)
+            throw new AggregateException("harness dispose failed", errors);
     }
 }
 

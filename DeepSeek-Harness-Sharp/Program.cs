@@ -10,6 +10,7 @@ public static class Program
         Dsh.Launcher.PluginRoot.EnsureRooted();
 
         string? home = null;
+        string? resumeSessionId = null;
         var dumpConfig = false;
         var dumpDefaultConfig = false;
         var positional = new List<string>();
@@ -19,6 +20,9 @@ public static class Program
             {
                 case "--home" when index + 1 < args.Length:
                     home = args[++index];
+                    break;
+                case "--session" when index + 1 < args.Length:
+                    resumeSessionId = args[++index];
                     break;
                 case "--dump-config":
                     dumpConfig = true;
@@ -75,10 +79,12 @@ public static class Program
                 }
                 if (subcommand == "daemon")
                     return await BootCli.RunTuiDaemonAsync();
-                return await RunEntrypointAsync(harnessHome, "tui", "@deepseek-ai/dsh-tui");
+                return await RunEntrypointAsync(harnessHome, "tui", "@deepseek-ai/dsh-tui", resumeSessionId);
             }
             case "gui":
-                return await RunEntrypointAsync(harnessHome, "gui", "@deepseek-ai/dsh-gui");
+                // 组合插件之前先摘掉自己的控制台, 避免 GUI 启动期间出现一闪而过的黑窗口。
+                ConsoleWindow.DetachIfOwned();
+                return await RunEntrypointAsync(harnessHome, "gui", "@deepseek-ai/dsh-gui", resumeSessionId);
             case "headless":
                 return await BootCli.RunHeadlessAsync(harnessHome, string.Join(' ', positional.Skip(1)));
             case null:
@@ -93,11 +99,12 @@ public static class Program
         Console.WriteLine("""
             Usage: dsh [options] [task...]
                    dsh tui [list | attach <id>]
-                   dsh gui
+                   dsh gui [--session <id>]
                    dsh headless "task"
 
             Options:
               --home <path>      harness home (default: $DSH_HOME or ~/.dsh)
+              --session <id>     open an existing session (gui) or resume one (tui)
               --gpu              run the TUI with the GPU renderer
               --dump-config      print the resolved harness configuration and exit
               --dump-default-config
@@ -106,10 +113,10 @@ public static class Program
             """);
     }
 
-    private static async Task<int> RunEntrypointAsync(HarnessHome home, string entrypoint, string entrypointPlugin)
+    private static async Task<int> RunEntrypointAsync(HarnessHome home, string entrypoint, string entrypointPlugin, string? resumeSessionId = null)
     {
         var options = new HarnessOptions(home, Directory.GetCurrentDirectory(), IsTui: entrypoint == "tui", EntrypointPlugin: entrypointPlugin);
         using var app = await ConfigBoot.Compose(options);
-        return await PluginEntrypointRegistry.RunAsync(entrypoint, app, new PluginEntrypointOptions(home, Directory.GetCurrentDirectory()));
+        return await PluginEntrypointRegistry.RunAsync(entrypoint, app, new PluginEntrypointOptions(home, Directory.GetCurrentDirectory(), resumeSessionId));
     }
 }

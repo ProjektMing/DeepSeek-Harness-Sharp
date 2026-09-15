@@ -1,0 +1,103 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Dsh.Gui.ViewModels"
+             x:Class="Dsh.Gui.Views.SidebarView"
+             x:DataType="vm:MainViewModel"
+             x:CompileBindings="True"
+             FontFamily="{DynamicResource Font.Ui}">
+
+  <DockPanel Background="{DynamicResource Brush.Bg.Sidebar}">
+
+    <StackPanel DockPanel.Dock="Top" Margin="12,12,12,4" Spacing="10">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Width="30" Height="30" CornerRadius="9" Background="{DynamicResource Brush.Accent}">
+          <TextBlock Text="D" FontSize="16" FontWeight="Bold"
+                     Foreground="{DynamicResource Brush.Text.OnAccent}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="deepseek" FontSize="{DynamicResource FontSize.Brand}" FontWeight="SemiBold"
+                     Foreground="{DynamicResource Brush.Text.Primary}" />
+          <TextBlock Text="HARNESS" Classes="Tertiary" />
+        </StackPanel>
+        <Button Grid.Column="2" Classes="Icon" Command="{Binding ToggleSidebarCommand}"
+                ToolTip.Tip="折叠左栏" VerticalAlignment="Center">
+          <Path Classes="Icon" Data="{StaticResource Icon.Collapse}" />
+        </Button>
+      </Grid>
+
+      <Button Classes="Primary" HorizontalAlignment="Stretch" Command="{Binding NewSessionCommand}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Path Classes="Icon" Stroke="{DynamicResource Brush.Text.OnAccent}" Data="{StaticResource Icon.Plus}" />
+          <TextBlock Text="新会话" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,4,0,0">
+        <TextBlock Text="工作区" Classes="Secondary" VerticalAlignment="Center" />
+        <Button Grid.Column="1" Classes="Icon" Width="26" Height="26" Command="{Binding RefreshSessionsCommand}"
+                ToolTip.Tip="刷新会话列表">
+          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Refresh}" />
+        </Button>
+        <Button Grid.Column="2" Classes="Icon" Width="26" Height="26" ToolTip.Tip="搜索(待实现)">
+          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Search}" />
+        </Button>
+        <Button Grid.Column="3" Classes="Icon" Width="26" Height="26" ToolTip.Tip="新建会话" Command="{Binding NewSessionCommand}">
+          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Plus}" />
+        </Button>
+      </Grid>
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Margin="8,4,8,8" Spacing="2">
+      <Button Classes="Ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+              Command="{Binding ShowMarketCommand}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Path Classes="Icon" Data="{StaticResource Icon.Plugin}" />
+          <TextBlock Text="插件市场" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+      <Button Classes="Ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+              Command="{Binding ShowSettingsCommand}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Path Classes="Icon" Data="{StaticResource Icon.Settings}" />
+          <TextBlock Text="设置" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+    </StackPanel>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="6,0,0,0">
+      <ItemsControl ItemsSource="{Binding Workspaces}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:WorkspaceGroupViewModel">
+            <StackPanel Margin="0,2,0,4">
+              <Button Classes="Ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                      Command="{Binding ToggleCommand}" Padding="6,4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Folder}" />
+                  <TextBlock Text="{Binding Name}" Classes="Secondary" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding IsExpanded}" Margin="10,0,0,0">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SessionNodeViewModel">
+                    <Button Classes="SessionItem" Classes.selected="{Binding IsSelected}"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,5"
+                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenSessionCommand}"
+                            CommandParameter="{Binding}">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding Title}" Classes="Body" FontSize="{DynamicResource FontSize.List}"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding RelativeTime}" Classes="Tertiary"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

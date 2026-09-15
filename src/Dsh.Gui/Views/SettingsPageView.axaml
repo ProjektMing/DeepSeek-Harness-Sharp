@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Dsh.Gui.ViewModels"
+             x:Class="Dsh.Gui.Views.SettingsPageView"
+             x:DataType="vm:MainViewModel"
+             x:CompileBindings="True"
+             FontFamily="{DynamicResource Font.Ui}">
+
+  <Grid RowDefinitions="Auto,*" Background="{DynamicResource Brush.Bg.Chat}">
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="20,14,20,10">
+      <TextBlock Text="设置" Classes="Title" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Classes="Ghost" Command="{Binding ShowChatCommand}" Content="返回对话" />
+    </Grid>
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <ContentControl Name="LegacyHost" Margin="16,0,16,16" />
+    </ScrollViewer>
+  </Grid>
+</UserControl>

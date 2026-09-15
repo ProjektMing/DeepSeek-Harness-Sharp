@@ -1,0 +1,72 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+  <!-- 深色/浅色两套调色板, 由 Application.RequestedThemeVariant 或设置页切换。 -->
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="Brush.Bg.Window" Color="#0D0D0D" />
+      <SolidColorBrush x:Key="Brush.Bg.Sidebar" Color="#141414" />
+      <SolidColorBrush x:Key="Brush.Bg.Chat" Color="#0D0D0D" />
+      <SolidColorBrush x:Key="Brush.Bg.Card" Color="#1A1A1A" />
+      <SolidColorBrush x:Key="Brush.Bg.Inset" Color="#1F1F1F" />
+      <SolidColorBrush x:Key="Brush.Bg.Hover" Color="#232323" />
+      <SolidColorBrush x:Key="Brush.Bg.Selected" Color="#2A2A2A" />
+      <SolidColorBrush x:Key="Brush.Border.Subtle" Color="#262626" />
+      <SolidColorBrush x:Key="Brush.Text.Primary" Color="#ECECEC" />
+      <SolidColorBrush x:Key="Brush.Text.Secondary" Color="#A0A0A0" />
+      <SolidColorBrush x:Key="Brush.Text.Tertiary" Color="#6E6E6E" />
+      <SolidColorBrush x:Key="Brush.Text.OnAccent" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Accent" Color="#4D6BFE" />
+      <SolidColorBrush x:Key="Brush.Accent.Hover" Color="#5F7CFF" />
+      <SolidColorBrush x:Key="Brush.Accent.Soft" Color="#1E2A5E" />
+      <SolidColorBrush x:Key="Brush.Status.Success" Color="#3FB950" />
+      <SolidColorBrush x:Key="Brush.Status.Warning" Color="#D29922" />
+      <SolidColorBrush x:Key="Brush.Status.Error" Color="#F85149" />
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="Brush.Bg.Window" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Bg.Sidebar" Color="#F7F7F8" />
+      <SolidColorBrush x:Key="Brush.Bg.Chat" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Bg.Card" Color="#F2F3F5" />
+      <SolidColorBrush x:Key="Brush.Bg.Inset" Color="#ECEDEF" />
+      <SolidColorBrush x:Key="Brush.Bg.Hover" Color="#EAEBEE" />
+      <SolidColorBrush x:Key="Brush.Bg.Selected" Color="#E1E3E8" />
+      <SolidColorBrush x:Key="Brush.Border.Subtle" Color="#E4E4E7" />
+      <SolidColorBrush x:Key="Brush.Text.Primary" Color="#1A1A1A" />
+      <SolidColorBrush x:Key="Brush.Text.Secondary" Color="#5C5C66" />
+      <SolidColorBrush x:Key="Brush.Text.Tertiary" Color="#8E8E99" />
+      <SolidColorBrush x:Key="Brush.Text.OnAccent" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Accent" Color="#4D6BFE" />
+      <SolidColorBrush x:Key="Brush.Accent.Hover" Color="#3F5AEB" />
+      <SolidColorBrush x:Key="Brush.Accent.Soft" Color="#E3E9FF" />
+      <SolidColorBrush x:Key="Brush.Status.Success" Color="#1A7F37" />
+      <SolidColorBrush x:Key="Brush.Status.Warning" Color="#9A6700" />
+      <SolidColorBrush x:Key="Brush.Status.Error" Color="#CF222E" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
+  <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Noto Sans CJK SC, sans-serif</FontFamily>
+  <FontFamily x:Key="Font.Mono">Cascadia Code, JetBrains Mono, Consolas, monospace</FontFamily>
+
+  <sys:Double x:Key="FontSize.Status">11</sys:Double>
+  <sys:Double x:Key="FontSize.List">12.5</sys:Double>
+  <sys:Double x:Key="FontSize.Body">13.5</sys:Double>
+  <sys:Double x:Key="FontSize.Title">15</sys:Double>
+  <sys:Double x:Key="FontSize.Brand">17</sys:Double>
+
+  <sys:Double x:Key="Radius.Control">6</sys:Double>
+  <sys:Double x:Key="Radius.Card">14</sys:Double>
+  <CornerRadius x:Key="CornerRadius.Control">6</CornerRadius>
+  <CornerRadius x:Key="CornerRadius.Card">14</CornerRadius>
+
+  <sys:Double x:Key="Spacing.Xs">4</sys:Double>
+  <sys:Double x:Key="Spacing.S">8</sys:Double>
+  <sys:Double x:Key="Spacing.M">12</sys:Double>
+  <sys:Double x:Key="Spacing.L">16</sys:Double>
+  <sys:Double x:Key="Spacing.Xl">24</sys:Double>
+
+  <sys:Double x:Key="Layout.SidebarWidth">300</sys:Double>
+  <sys:Double x:Key="Layout.ChatMinWidth">640</sys:Double>
+  <Thickness x:Key="Layout.ContentPadding">16,12,16,8</Thickness>
+</ResourceDictionary>

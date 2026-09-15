@@ -1,4 +1,5 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeepSeek-Harness-Sharp", "DeepSeek-Harness-Sharp\DeepSeek-Harness-Sharp.csproj", "{B47F8CE0-EF65-4C50-BB90-A747F6C8AABF}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{6C2968D4-6D89-4190-8862-CBC339E43A3F}"
@@ -87,6 +88,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dsh.Plugins.Native", "src\Dsh.Plugins.Native\Dsh.Plugins.Native.csproj", "{9FA087C3-AEFA-492F-9B91-D4C08992572A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dsh.Plugins.Native.Host", "src\Dsh.Plugins.Native.Host\Dsh.Plugins.Native.Host.csproj", "{30EF9E48-C6B2-467F-8910-074DEBFF6EB6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dsh.Gui", "src\Dsh.Gui\Dsh.Gui.csproj", "{F3609092-FB77-4254-9A1F-A1C3B40E02C8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -578,6 +581,18 @@ Global
 		{30EF9E48-C6B2-467F-8910-074DEBFF6EB6}.Release|x64.Build.0 = Release|Any CPU
 		{30EF9E48-C6B2-467F-8910-074DEBFF6EB6}.Release|x86.ActiveCfg = Release|Any CPU
 		{30EF9E48-C6B2-467F-8910-074DEBFF6EB6}.Release|x86.Build.0 = Release|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Debug|x64.Build.0 = Debug|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Debug|x86.Build.0 = Debug|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|x64.ActiveCfg = Release|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|x64.Build.0 = Release|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|x86.ActiveCfg = Release|Any CPU
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -622,5 +637,6 @@ Global
 		{DE6EF4B1-50C5-4564-899D-C41812F06821} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{9FA087C3-AEFA-492F-9B91-D4C08992572A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{30EF9E48-C6B2-467F-8910-074DEBFF6EB6} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{F3609092-FB77-4254-9A1F-A1C3B40E02C8} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

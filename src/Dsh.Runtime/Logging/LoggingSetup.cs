@@ -5,13 +5,17 @@ namespace Dsh.Runtime.Logging;
 /** MEL 日志装配:内存缓冲 + 可选文件/控制台 provider;Context 通过它取得 LoggerFactory 与缓冲。 */
 public sealed class LoggingSetup : IDisposable
 {
-    private LoggingSetup(ILoggerFactory factory, InMemoryLogProvider memory)
+    private readonly FileLogProvider? _file;
+
+    private LoggingSetup(ILoggerFactory factory, InMemoryLogProvider memory, FileLogProvider? file)
     {
         Factory = factory;
         Memory = memory;
+        _file = file;
     }
 
     public ILoggerFactory Factory { get; }
+
     public InMemoryLogProvider Memory { get; }
 
     public static LoggingSetup Create(LoggingOptions? options = null, string? logDirectory = null, bool allowConsole = false)
@@ -34,7 +38,7 @@ public sealed class LoggingSetup : IDisposable
                 });
             }
         });
-        var setup = new LoggingSetup(factory, memory);
+        var setup = new LoggingSetup(factory, memory, file);
         if (logDirectory is not null)
             setup.Announce(options, logDirectory);
         return setup;
@@ -48,5 +52,10 @@ public sealed class LoggingSetup : IDisposable
             logDirectory ?? "off",
             options.Console ? "on" : "off");
 
-    public void Dispose() => Factory.Dispose();
+    public void Dispose()
+    {
+        Factory.Dispose();
+        // LoggerFactory 不会释放通过 AddProvider 传入的实例, 文件句柄必须在这里显式关掉。
+        _file?.Dispose();
+    }
 }

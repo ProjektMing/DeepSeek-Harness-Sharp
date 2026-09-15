@@ -67,13 +67,15 @@ public sealed class AgentLoop : Service, IAgentFactory
     {
         var persistence = _persistenceFor?.Invoke(options.SessionId)
             ?? throw new InvalidOperationException("no session persistence backend configured for resume");
-        using var handle = persistence.Open(options.SessionId, SessionAccess.Write);
+        // 只读取历史; 写入句柄由持久化接线在会话进入 store 后接管, 否则两处会争同一把写锁。
+        using var handle = persistence.Open(options.SessionId, SessionAccess.Read);
         var persisted = handle.Read();
         var closers = SessionRepair.InterruptedTurnClosers(persisted);
         var events = closers.Count > 0 ? [..persisted, ..closers] : persisted;
         var session = Session.FromRestore(options.SessionId, events, handle.Header, handle.InheritedEventCount);
         var sessions = Ctx.Get<SessionStore>(SessionStore.ServiceName)!;
-        using var detach = sessions.Enter(session, owner);
+        // 与 Create 一致: 会话进入 store 后由 agent 生命周期持有, 不能在这里就解绑, 否则事件不再转发/落盘。
+        sessions.Enter(session, owner);
         sessions.Announce(session);
         var agent = new AgentLoopAgent(owner, session.Id, options.AgentOptions ?? new AgentOptions(), session, LastTurnOf);
         options.Setup?.Invoke(agent.Ctx);

@@ -4,7 +4,8 @@ namespace Dsh.Boot;
 
 public sealed record PluginEntrypointOptions(
     HarnessHome Home,
-    string Cwd);
+    string Cwd,
+    string? ResumeSessionId = null);
 
 public static class PluginEntrypointRegistry
 {

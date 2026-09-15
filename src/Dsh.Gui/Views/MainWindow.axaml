@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Dsh.Gui.ViewModels"
+        xmlns:views="using:Dsh.Gui.Views"
+        x:Class="Dsh.Gui.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        x:CompileBindings="True"
+        Title="DeepSeek Harness"
+        Width="1400" Height="850" MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="{DynamicResource Font.Ui}"
+        FontSize="{DynamicResource FontSize.Body}"
+        Background="{DynamicResource Brush.Bg.Window}">
+
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+N" Command="{Binding NewSessionCommand}" />
+    <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding ShowSettingsCommand}" />
+    <KeyBinding Gesture="Escape" Command="{Binding ShowChatCommand}" />
+    <KeyBinding Gesture="Ctrl+D1" Command="{Binding ShowConversationCommand}" />
+    <KeyBinding Gesture="Ctrl+D2" Command="{Binding ShowTraceCommand}" />
+    <KeyBinding Gesture="Ctrl+B" Command="{Binding ToggleSidebarCommand}" />
+  </Window.KeyBindings>
+
+  <Grid ColumnDefinitions="Auto,Auto,*">
+    <views:SidebarView Grid.Column="0" Width="{DynamicResource Layout.SidebarWidth}"
+                       IsVisible="{Binding IsSidebarVisible}" />
+    <Border Grid.Column="1" Width="1" Background="{DynamicResource Brush.Border.Subtle}"
+            IsVisible="{Binding IsSidebarVisible}" />
+
+    <Grid Grid.Column="2">
+      <views:ChatView IsVisible="{Binding IsChatPage}" />
+      <views:SettingsPageView IsVisible="{Binding IsSettingsPage}" />
+      <views:MarketPageView IsVisible="{Binding IsMarketPage}" />
+      <Button Classes="Icon" Width="28" Height="28" Margin="10,12,0,0"
+              HorizontalAlignment="Left" VerticalAlignment="Top"
+              Command="{Binding ToggleSidebarCommand}"
+              IsVisible="{Binding !IsSidebarVisible}"
+              ToolTip.Tip="展开左栏">
+        <Path Classes="Icon" Data="{StaticResource Icon.Menu}" />
+      </Button>
+    </Grid>
+  </Grid>
+</Window>

@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Dsh.Gui.ViewModels"
+             x:Class="Dsh.Gui.Views.MarketPageView"
+             x:DataType="vm:MainViewModel"
+             x:CompileBindings="True"
+             FontFamily="{DynamicResource Font.Ui}">
+
+  <Grid RowDefinitions="Auto,*" Background="{DynamicResource Brush.Bg.Chat}">
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="20,14,20,10">
+      <TextBlock Text="插件市场" Classes="Title" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Classes="Ghost" Command="{Binding RefreshPluginsCommand}" Content="刷新" />
+    </Grid>
+    <ScrollViewer Grid.Row="1" Margin="20,0,20,16">
+      <TextBlock Text="{Binding PluginText}" FontFamily="{DynamicResource Font.Mono}"
+                 FontSize="{DynamicResource FontSize.List}"
+                 Foreground="{DynamicResource Brush.Text.Secondary}"
+                 TextWrapping="Wrap" />
+    </ScrollViewer>
+  </Grid>
+</UserControl>

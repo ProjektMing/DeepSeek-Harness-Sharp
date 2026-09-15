@@ -256,3 +256,5 @@
 51. 选取第三方开源库时，应优先选择使用量大、活跃维护的库。
 52. 不要替我计算工作量需要几天/几人天/几人月，你是AI，速度足够快。
 53. README是用户说明，不是开发者手册，不准将开发进度写进去。
+54. 首次在新环境构建前先填充本地 NuGet feed（`packages/`）：Windows 用 `pwsh -File scripts/fetch-dryioc-feed.ps1`，Linux/macOS 用 `bash scripts/fetch-dryioc-feed.sh`。Dsh.Runtime 依赖的 DryIoc 6.0.0-preview-09 只存在于 `dadhi/DryIoc` 的 CI 产物中，包 ID 为 `DryIoc.dll`（nuget.org 上的 `DryIoc` 最高只到 preview-08，且 `DryIoc.dll` 的 preview-09 是更旧的 commit）。脚本从 `src/Dsh.Runtime/Dsh.Runtime.csproj` 读取所需版本，在 `dadhi/DryIoc` 默认分支的**最新 commit**（运行时解析，不硬编码）上本地构建并产出该包；`packages/` 已存在该包则跳过，**不依赖 GitHub CLI**；本机有已登录的 `gh` 时可加 `--use-gh-artifact`（ps1 为 `-UseGhArtifact`）直接从 CI 产物下载；需要经代理访问 GitHub 时加 `--proxy <url>`（ps1 为 `-Proxy <url>`，不传则直连）。
+55. GUI 的构建/验证必须后台完成，**禁止抢前台焦点或注入键鼠**（用户在用机器时会直接被打断）：用 `pwsh -File scripts/capture-gui.ps1 -Session <id> -Out <png>` 启动并截图；它用 `dsh gui --session <id>` 直接打开指定会话（等价于 CLI 上的 `dsh gui --session <id>`），再用 `PrintWindow(PW_RENDERFULLCONTENT)` 抓被遮挡的窗口，全程不激活窗口。需要产生一个干净会话时先用 `dsh --home <home> headless "<task>"` 跑一轮真实回合（该 home 里要有一份 provider 配置）。注意：Avalonia 在窗口未激活时会丢弃注入的键盘消息，`WM_CHAR` 送中文还会变乱码，所以不要试图用 `SendKeys`/`PostMessage` 驱动 GUI。

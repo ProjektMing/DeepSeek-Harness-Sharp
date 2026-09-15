@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Dsh.Runtime.Logging;
 
 /** 逐行落盘的文本日志:按天分文件,单文件超限后切分 .1/.2…,启动时清理过期文件。 */
-public sealed class FileLogProvider : ILoggerProvider
+public sealed class FileLogProvider : ILoggerProvider, IDisposable
 {
     private const string FilePrefix = "dsh-";
     private const string SearchPattern = "dsh-*.log";
@@ -17,6 +17,7 @@ public sealed class FileLogProvider : ILoggerProvider
     private StreamWriter? _writer;
     private DateOnly _date;
     private int _index;
+    private bool _disposed;
 
     public FileLogProvider(string directory, LoggingOptions? options = null)
     {
@@ -33,6 +34,7 @@ public sealed class FileLogProvider : ILoggerProvider
     {
         lock (_sync)
         {
+            _disposed = true;
             _writer?.Dispose();
             _writer = null;
         }
@@ -43,6 +45,8 @@ public sealed class FileLogProvider : ILoggerProvider
         var timestamp = DateTimeOffset.Now;
         lock (_sync)
         {
+            if (_disposed)
+                return;
             var date = DateOnly.FromDateTime(timestamp.LocalDateTime);
             if (_writer is null || date != _date)
                 Open(date, 0);

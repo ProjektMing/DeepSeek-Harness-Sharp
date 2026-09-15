@@ -13,7 +13,7 @@ public sealed class Plugin : IDshPlugin
     public IDisposable Apply(Context ctx, object? config)
     {
         PluginEntrypointRegistry.Register("gui",
-            static (app, options, _) => GuiRunner.Run(app, options.Cwd));
+            static (app, options, _) => GuiRunner.Run(app, options.Cwd, options.ResumeSessionId));
         return new CallbackDisposable();
     }
 

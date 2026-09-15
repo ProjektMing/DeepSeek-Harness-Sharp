@@ -46,11 +46,10 @@ public sealed class Plugin(string packageName) : IDshPlugin
             var session = notification.Session;
             if (handles.ContainsKey(session.Id))
                 return;
-            var handle = persistence.Create(session.Header, session.InheritedEventCount);
-            handles[session.Id] = handle;
-            var seed = session.SnapshotEvents();
-            if (seed.Count > 0)
-                handle.Append(seed);
+            // 恢复既有会话时日志已在磁盘上, 只能接管不能重建。
+            handles[session.Id] = persistence.Stat(session.Id) is null
+                ? Materialize(persistence, session)
+                : Adopt(persistence, session);
         });
         var eventHandler = ctx.On<SessionEventNotification>(notification =>
         {
@@ -75,6 +74,27 @@ public sealed class Plugin(string packageName) : IDshPlugin
             new CallbackDisposable(() => eventHandler()),
             new CallbackDisposable(() => flush()),
             new CallbackDisposable(() => disposed()));
+    }
+
+
+    private static ISessionHandle Materialize(ISessionPersistence persistence, Session session)
+    {
+        var handle = persistence.Create(session.Header, session.InheritedEventCount);
+        var seed = session.SnapshotEvents();
+        if (seed.Count > 0)
+            handle.Append(seed);
+        return handle;
+    }
+
+    /** 接管磁盘日志; 会话内存里可能多出日志没有的尾部(如中断轮的收尾事件)。 */
+    private static ISessionHandle Adopt(ISessionPersistence persistence, Session session)
+    {
+        var handle = persistence.Open(session.Id, SessionAccess.Write);
+        var stored = handle.Read();
+        var own = session.OwnEvents();
+        if (own.Count > stored.Count)
+            handle.Append([.. own.Skip(stored.Count)]);
+        return handle;
     }
 
     private sealed class DisposableBundle(params IDisposable[] disposables) : IDisposable
