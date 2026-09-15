@@ -8,6 +8,7 @@ param(
 
 # 后台截图 GUI: 不激活窗口, 不注入输入, 不占用用户的鼠标键盘。
 # 需要看某个会话的界面时用 -Session <id> (等价于 dsh gui --session <id>), 启动后直接就是那个会话。
+# 用 dsh-gui.exe(Windows 子系统)而不是控制台宿主, 这样连"命令行黑框一闪而过"都不会出现。
 # 依赖: PrintWindow(PW_RENDERFULLCONTENT) 可以抓被遮挡的窗口。
 
 Add-Type -AssemblyName System.Drawing
@@ -26,13 +27,12 @@ public class Win32GuiShot {
 [Win32GuiShot]::SetThreadDpiAwarenessContext([IntPtr](-4)) | Out-Null
 
 $root = Split-Path -Parent $PSScriptRoot
-$exe = Join-Path $root "DeepSeek-Harness-Sharp\bin\Debug\net10.0\DeepSeek-Harness-Sharp.exe"
-if (-not (Test-Path $exe)) { throw "先构建宿主项目: dotnet build DeepSeek-Harness-Sharp\DeepSeek-Harness-Sharp.csproj" }
+$exe = Join-Path $root "DshGuiHost\bin\Debug\net10.0\dsh-gui.exe"
+if (-not (Test-Path $exe)) { throw "先构建 GUI 启动器: dotnet build DshGuiHost\DshGuiHost.csproj" }
 
 $arguments = @()
 if ($DshHome.Length -gt 0) { $arguments += @("--home", $DshHome) }
 if ($Session.Length -gt 0) { $arguments += @("--session", $Session) }
-$arguments += "gui"
 $errorLog = Join-Path $root "artifacts\capture-gui.err"
 Remove-Item $errorLog -ErrorAction SilentlyContinue
 $process = Start-Process -FilePath $exe -ArgumentList $arguments -WorkingDirectory $root -RedirectStandardError $errorLog -PassThru

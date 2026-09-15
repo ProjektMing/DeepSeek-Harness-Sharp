@@ -91,6 +91,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dsh.Plugins.Native.Host", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dsh.Gui", "src\Dsh.Gui\Dsh.Gui.csproj", "{F3609092-FB77-4254-9A1F-A1C3B40E02C8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DshGuiHost", "DshGuiHost\DshGuiHost.csproj", "{3A04A125-1D9A-4029-8480-DE1D516EE943}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -593,6 +595,18 @@ Global
 		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|x64.Build.0 = Release|Any CPU
 		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|x86.ActiveCfg = Release|Any CPU
 		{F3609092-FB77-4254-9A1F-A1C3B40E02C8}.Release|x86.Build.0 = Release|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Debug|x64.Build.0 = Debug|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Debug|x86.Build.0 = Debug|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Release|x64.ActiveCfg = Release|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Release|x64.Build.0 = Release|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Release|x86.ActiveCfg = Release|Any CPU
+		{3A04A125-1D9A-4029-8480-DE1D516EE943}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
