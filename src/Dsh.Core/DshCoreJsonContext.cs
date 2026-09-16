@@ -45,6 +45,7 @@ namespace Dsh.Core;
 [JsonSerializable(typeof(AgentCancelCause.Disposed))]
 [JsonSerializable(typeof(AgentCancelCause.Legacy))]
 [JsonSerializable(typeof(SessionHeader))]
+[JsonSerializable(typeof(MemoryAuditEntry))]
 [JsonSerializable(typeof(IReadOnlyList<long>))]
 [JsonSerializable(typeof(JsonElement))]
 internal sealed partial class DshCoreJsonContext : JsonSerializerContext

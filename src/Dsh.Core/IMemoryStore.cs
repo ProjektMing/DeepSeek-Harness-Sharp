@@ -14,4 +14,6 @@ public interface IMemoryStore
 public static class MemoryServices
 {
     public const string Store = "memoryStore";
+
+    public const string ProjectMemory = "projectMemory";
 }
