@@ -52,77 +52,94 @@ public sealed class MemoryPluginTests
     }
 
     [Fact]
-    public async Task WriteTool_ReplacesMemoryWhenEnabled()
+    public async Task SaveTool_RememberCorrectForgetSkip_WhenEnabled()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"dsh-memory-tool-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        try
-        {
-            var memoryPath = Path.Combine(root, "memory.md");
-            File.WriteAllText(Path.Combine(root, "settings.yaml"), $"""
-                memory:
-                  enabled: true
-                  file: {memoryPath}
-                """);
-            var home = HarnessHome.Resolve(root);
-            var options = new HarnessOptions(home, root);
-            var ctx = new Context();
-            _ = new SystemPrompt(ctx, new SystemPromptConfig());
-            var tools = new ToolRuntime(ctx);
-            var store = new FileMemoryStore(memoryPath);
-            using var tool = MemoryWriteTool.Register(ctx, options, store);
+        using var fixture = new ToolFixture(enabled: true);
 
-            var result = await tools.Execute(new ToolExecutionInput
-            {
-                CallId = ToolCallId.Create("call-1"),
-                Name = "memory_write",
-                Arguments = JsonDocument.Parse("""{"content":"# Memory\n- decision"}""").RootElement,
-                Signal = default,
-            });
+        var remembered = await fixture.Execute("""{"action":"remember","key":"build.command","text":"dotnet build","section":"Commands"}""");
+        Assert.IsType<ToolExecutionResult.Success>(remembered);
+        var text = File.ReadAllText(fixture.MemoryPath);
+        Assert.Contains("## Commands", text);
+        Assert.Contains("- build.command :: dotnet build (", text);
 
-            Assert.IsType<ToolExecutionResult.Success>(result);
-            Assert.Equal("# Memory\n- decision", File.ReadAllText(memoryPath));
-        }
-        finally
-        {
-            Directory.Delete(root, true);
-        }
+        var corrected = await fixture.Execute("""{"action":"correct","key":"no.force.push","text":"never force push"}""");
+        Assert.IsType<ToolExecutionResult.Success>(corrected);
+        Assert.Contains("## Corrections", File.ReadAllText(fixture.MemoryPath));
+
+        var forgotten = await fixture.Execute("""{"action":"forget","key":"build.command"}""");
+        Assert.IsType<ToolExecutionResult.Success>(forgotten);
+        Assert.DoesNotContain("build.command", File.ReadAllText(fixture.MemoryPath));
+
+        var before = File.ReadAllText(fixture.MemoryPath);
+        var skipped = await fixture.Execute("""{"action":"skip","reason":"user preference"}""");
+        Assert.IsType<ToolExecutionResult.Success>(skipped);
+        Assert.Equal(before, File.ReadAllText(fixture.MemoryPath));
     }
 
     [Fact]
-    public async Task WriteTool_FailsWhenMemoryDisabled()
+    public async Task SaveTool_FailsWhenMemoryDisabled()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"dsh-memory-off-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        try
+        using var fixture = new ToolFixture(enabled: false);
+
+        var result = await fixture.Execute("""{"action":"remember","key":"a","text":"b"}""");
+
+        Assert.IsType<ToolExecutionResult.Failure>(result);
+        Assert.False(File.Exists(fixture.MemoryPath));
+    }
+
+    [Fact]
+    public async Task SaveTool_RequiresTextForRemember()
+    {
+        using var fixture = new ToolFixture(enabled: true);
+
+        var result = await fixture.Execute("""{"action":"remember","key":"a"}""");
+
+        Assert.IsType<ToolExecutionResult.Failure>(result);
+    }
+
+    private sealed class ToolFixture : IDisposable
+    {
+        private readonly string _root;
+        private readonly ToolRuntime _tools;
+        private readonly IDisposable _tool;
+
+        public ToolFixture(bool enabled)
         {
-            var memoryPath = Path.Combine(root, "memory.md");
-            File.WriteAllText(Path.Combine(root, "settings.yaml"), $"""
+            _root = Path.Combine(Path.GetTempPath(), $"dsh-memory-tool-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(_root);
+            MemoryPath = Path.Combine(_root, "memory.md");
+            File.WriteAllText(Path.Combine(_root, "settings.yaml"), $"""
                 memory:
-                  enabled: false
-                  file: {memoryPath}
+                  enabled: {(enabled ? "true" : "false")}
+                  file: {MemoryPath}
                 """);
-            var home = HarnessHome.Resolve(root);
-            var options = new HarnessOptions(home, root);
+            var home = HarnessHome.Resolve(_root);
+            var options = new HarnessOptions(home, _root);
             var ctx = new Context();
             _ = new SystemPrompt(ctx, new SystemPromptConfig());
-            var tools = new ToolRuntime(ctx);
-            using var tool = MemoryWriteTool.Register(ctx, options, new FileMemoryStore(memoryPath));
+            _tools = new ToolRuntime(ctx);
+            var memory = new ProjectMemory(
+                new FileMemoryStore(MemoryPath),
+                Path.Combine(_root, ".dsh-memory"));
+            _tool = MemorySaveTool.Register(ctx, options, memory);
+        }
 
-            var result = await tools.Execute(new ToolExecutionInput
+        public string MemoryPath { get; }
+
+        public Task<ToolExecutionResult> Execute(string arguments)
+            => _tools.Execute(new ToolExecutionInput
             {
                 CallId = ToolCallId.Create("call-1"),
-                Name = "memory_write",
-                Arguments = JsonDocument.Parse("""{"content":"x"}""").RootElement,
+                Name = "memory_save",
+                Arguments = JsonDocument.Parse(arguments).RootElement,
                 Signal = default,
             });
 
-            Assert.IsType<ToolExecutionResult.Failure>(result);
-            Assert.False(File.Exists(memoryPath));
-        }
-        finally
+        public void Dispose()
         {
-            Directory.Delete(root, true);
+            _tool.Dispose();
+            if (Directory.Exists(_root))
+                Directory.Delete(_root, true);
         }
     }
 }
