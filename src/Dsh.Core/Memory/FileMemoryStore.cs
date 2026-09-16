@@ -1,8 +1,6 @@
-using Dsh.Core;
+namespace Dsh.Core;
 
-namespace Dsh.Memory;
-
-/** 文件后端:整段 markdown 存在一个文件里(默认 .dsh-memory.md)。 */
+/** 文件后端:项目记忆存在一个 markdown 文件里(默认 项目根/.dsh-memory.md)。 */
 public sealed class FileMemoryStore(string path) : IMemoryStore
 {
     public string Description => path;
@@ -13,7 +11,9 @@ public sealed class FileMemoryStore(string path) : IMemoryStore
     public Task SetAsync(string text, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        File.WriteAllText(path, text);
+        var temporary = $"{path}.tmp";
+        File.WriteAllText(temporary, text);
+        File.Move(temporary, path, overwrite: true);
         return Task.CompletedTask;
     }
 }

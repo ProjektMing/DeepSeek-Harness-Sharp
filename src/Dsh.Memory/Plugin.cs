@@ -7,26 +7,31 @@ using Dsh.Runtime;
 
 namespace Dsh.Memory;
 
-/** 项目记忆插件:按 settings.yaml 的 memory.backend 提供 IMemoryStore,并注册 memory_write 工具。 */
+/** 项目记忆插件:按 settings.yaml 提供 IMemoryStore 与 ProjectMemory,注册 memory_save 工具与回合末自动捕获。 */
 public sealed class Plugin : IDshPlugin
 {
-    public string[] Inject => [ToolRuntime.ServiceName, SystemPrompt.ServiceName];
+    public string[] Inject => [ToolRuntime.ServiceName, SystemPrompt.ServiceName, LlmRuntime.ServiceName, SessionStore.ServiceName];
 
     public IDisposable Apply(Context ctx, object? config)
     {
         var options = ctx.GetProp("harnessOptions") as HarnessOptions
             ?? throw new InvalidOperationException("harnessOptions is required for the memory plugin");
         var settings = HarnessSettings.Load(options.Home);
-        var store = MemoryStoreFactory.Create(settings.Memory, options.Cwd ?? Environment.CurrentDirectory);
+        var cwd = options.Cwd ?? Environment.CurrentDirectory;
+        var store = MemoryStoreFactory.Create(settings.Memory, cwd);
+        var memory = new ProjectMemory(store, ProjectMemory.SidecarDirFor(ProjectRoot.Resolve(cwd)));
         ctx.Provide(MemoryServices.Store, store);
-        var tool = MemoryWriteTool.Register(ctx, options, store);
-        return new Bundle(store as IDisposable, tool);
+        ctx.Provide(MemoryServices.ProjectMemory, memory);
+        var tool = MemorySaveTool.Register(ctx, options, memory);
+        var capture = new MemoryCapture(ctx, memory, options);
+        return new Bundle(store as IDisposable, tool, capture);
     }
 
-    private sealed class Bundle(IDisposable? store, IDisposable tool) : IDisposable
+    private sealed class Bundle(IDisposable? store, IDisposable tool, IDisposable capture) : IDisposable
     {
         public void Dispose()
         {
+            capture.Dispose();
             tool.Dispose();
             store?.Dispose();
         }
