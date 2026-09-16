@@ -50,6 +50,7 @@ public enum GeneratePurpose
 {
     Compaction,
     SessionTitle,
+    Memory,
 }
 
 public sealed record LlmProviderInfo(string Id, string Name);
