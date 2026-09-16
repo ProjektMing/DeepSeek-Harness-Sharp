@@ -84,8 +84,8 @@ public static class CommandMenuCatalog
         },
         "memory" => descriptor with
         {
-            MenuSchema = new CommandMenuSchema("Project memory", "on or off"),
-            ArgumentSchemas = [new CommandArgumentSchema("state", "select", "on or off", Choices: ["on", "off"])],
+            MenuSchema = new CommandMenuSchema("Project memory", "on, off, or show"),
+            ArgumentSchemas = [new CommandArgumentSchema("state", "select", "on, off, or show", Choices: ["on", "off", "show"])],
         },
         _ => descriptor,
     };
