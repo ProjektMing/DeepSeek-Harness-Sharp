@@ -199,6 +199,10 @@ public sealed class MemorySettings
     [YamlMember(Alias = "backend")]
     public string? Backend { get; set; }
 
+    /** 回合末自动捕获(会话摘要 + 记忆整固);缺省 true,仅在 enabled 时生效。 */
+    [YamlMember(Alias = "capture")]
+    public bool? Capture { get; set; }
+
     [YamlMember(Alias = "mongo")]
     public MemoryMongoSettings? Mongo { get; set; }
 }
