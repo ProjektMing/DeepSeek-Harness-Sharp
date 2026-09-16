@@ -1,6 +1,5 @@
 using Dsh.Boot;
 using Dsh.Core;
-using Dsh.Interaction;
 using Dsh.Runtime;
 
 namespace Dsh.Gui.Services;
@@ -26,26 +25,23 @@ public sealed class SettingsFacade(Context ctx, HarnessHome home)
         Changed?.Invoke();
     }
 
-    public async Task<string> RunCommandAsync(IAgent agent, string line)
+    /** 某个插件的参数段(例如 GUI 自己的外观/显卡设置); 合并已有键后写回。 */
+    public void SavePluginParameters(string package, IReadOnlyDictionary<string, object?> parameters)
     {
-        var commands = ctx.Get<CommandsService>(CommandsService.ServiceName);
-        if (commands is null)
-            return $"未知命令: {line}";
-        try
+        var settings = Load();
+        var existing = settings.Plugins.GetValueOrDefault(package);
+        var merged = new Dictionary<string, object?>(existing?.Parameters ?? [], StringComparer.Ordinal);
+        foreach (var (key, value) in parameters)
+            merged[key] = value;
+        settings.Plugins[package] = new PluginSetting
         {
-            var execution = await commands.Execute(agent, line);
-            var text = execution?.Result switch
-            {
-                CommandResult.Success { Text: { } success } => success,
-                CommandResult.Error error => error.Text,
-                _ => $"未知命令: {line}",
-            };
-            Changed?.Invoke();
-            return text;
-        }
-        catch (Exception error)
-        {
-            return error.Message;
-        }
+            Enabled = existing?.Enabled ?? true,
+            Parameters = merged,
+        };
+        settings.SavePlugins(home);
+        Changed?.Invoke();
     }
+
+    public async Task<string> RunCommandAsync(IAgent agent, string line)
+        => await new CommandBridge(ctx).RunAsync(agent, line);
 }

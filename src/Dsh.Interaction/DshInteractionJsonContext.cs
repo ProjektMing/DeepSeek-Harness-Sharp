@@ -8,6 +8,7 @@ namespace Dsh.Interaction;
 [JsonSerializable(typeof(ApprovalAskedPayload))]
 [JsonSerializable(typeof(ApprovalDecidedPayload))]
 [JsonSerializable(typeof(ApprovalPolicyPayload))]
+[JsonSerializable(typeof(ApprovalGrantedPayload))]
 [JsonSerializable(typeof(CommandRunPayload))]
 [JsonSerializable(typeof(CommandDonePayload))]
 internal sealed partial class DshInteractionJsonContext : JsonSerializerContext

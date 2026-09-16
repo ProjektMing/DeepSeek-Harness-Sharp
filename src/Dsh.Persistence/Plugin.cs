@@ -55,6 +55,7 @@ public sealed class Plugin(string packageName) : IDshPlugin
         {
             if (handles.TryGetValue(notification.Session.Id, out var handle))
                 handle.Append([notification.Event]);
+            DeriveTitle(ctx, persistence, notification.Session, notification.Event);
         });
         var flush = ctx.On<SessionFlushNotification>(notification =>
         {
@@ -76,6 +77,26 @@ public sealed class Plugin(string packageName) : IDshPlugin
             new CallbackDisposable(() => disposed()));
     }
 
+
+    /** 首条用户消息落盘时补一个标题(只做一次); 失败只记录, 标题是展示元数据, 不能影响会话推进。 */
+    private static void DeriveTitle(Context ctx, ISessionPersistence persistence, Session session, SessionEvent sessionEvent)
+    {
+        if (session.Header.Title is { Length: > 0 })
+            return;
+        if (sessionEvent.Data is not UserMessagePayload userMessage)
+            return;
+        if (SessionTitleFromUserMessage.Derive(userMessage.Message) is not { } title)
+            return;
+        try
+        {
+            persistence.Rename(session.Id, title);
+        }
+        catch (Exception error)
+        {
+            ctx.LoggerFor("sessionPersistence").Warn($"session \"{session.Id}\": title persist failed: {error.Message}");
+        }
+        session.Rename(title);
+    }
 
     private static ISessionHandle Materialize(ISessionPersistence persistence, Session session)
     {

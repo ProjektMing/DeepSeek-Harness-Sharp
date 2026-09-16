@@ -1,17 +1,23 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Dsh.Gui.ViewModels;
+
 namespace Dsh.Gui.Views;
 
 public sealed partial class ChatView : UserControl
 {
+    private const double StickyTolerance = 24;
+
     private MainViewModel? _viewModel;
+    private bool _sticky = true;
 
     public ChatView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        MessageList.AddHandler(ScrollViewer.ScrollChangedEvent, OnScrollChanged);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -33,17 +39,59 @@ public sealed partial class ChatView : UserControl
         _viewModel = null;
     }
 
-    private void ScrollToMessage(MessageViewModel message) => MessageList.ScrollIntoView(message);
+    /** 只在贴底时跟随流式输出; 用户向上翻阅时保持位置。 */
+    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (e.Source is not ScrollViewer scroll)
+            return;
+        _sticky = scroll.Offset.Y + scroll.Viewport.Height >= scroll.Extent.Height - StickyTolerance;
+    }
+
+    private void ScrollToMessage(MessageViewModel message)
+    {
+        if (_viewModel is null)
+            return;
+        if (!_viewModel.Messages.Contains(message))
+            return;
+        _sticky = true;
+        Dispatcher.UIThread.Post(() => MessageList.ScrollIntoView(message));
+    }
 
     private void ScrollToEnd()
     {
-        if (_viewModel?.Messages.Count > 0)
-            MessageList.ScrollIntoView(_viewModel.Messages[^1]);
+        if (!_sticky || _viewModel?.Messages.Count is not > 0)
+            return;
+        Dispatcher.UIThread.Post(() => MessageList.ScrollIntoView(_viewModel.Messages[^1]));
     }
 
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter || e.KeyModifiers != KeyModifiers.None || _viewModel is null)
+        if (_viewModel is null)
+            return;
+        if (_viewModel.IsSuggestionOpen)
+        {
+            switch (e.Key)
+            {
+                case Key.Down:
+                    e.Handled = true;
+                    _viewModel.MoveSuggestionCommand.Execute(1);
+                    return;
+                case Key.Up:
+                    e.Handled = true;
+                    _viewModel.MoveSuggestionCommand.Execute(-1);
+                    return;
+                case Key.Tab:
+                case Key.Enter when e.KeyModifiers == KeyModifiers.None:
+                    e.Handled = true;
+                    _viewModel.ConfirmSuggestionCommand.Execute(null);
+                    return;
+                case Key.Escape:
+                    e.Handled = true;
+                    _viewModel.CloseSuggestionsCommand.Execute(null);
+                    return;
+            }
+        }
+        if (e.Key != Key.Enter || e.KeyModifiers != KeyModifiers.None)
             return;
         e.Handled = true;
         if (_viewModel.SubmitCommand.CanExecute(null))

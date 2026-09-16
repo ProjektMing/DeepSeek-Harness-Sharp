@@ -46,7 +46,6 @@
       <TrimmerRootAssembly Include="Dsh.Plugins.Native" />
       <TrimmerRootAssembly Include="Dsh.Plugins.Native.Host" />
       <TrimmerRootAssembly Include="Dsh.Llm" />
-      <TrimmerRootAssembly Include="Dsh.Core" />
       <TrimmerRootAssembly Include="System.Text.Json" />
     </ItemGroup>
 

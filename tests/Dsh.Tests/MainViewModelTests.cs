@@ -1,13 +1,16 @@
+using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Dsh.Boot;
 using Dsh.Core;
+using Dsh.Gui.Services;
 using Dsh.Gui.ViewModels;
+using Dsh.Interaction;
 using Dsh.Llm;
-using Dsh.Persistence;
 
 namespace Dsh.Tests;
 
 /** 主窗口视图模型的行为: 页面/标签切换、会话分组、命令通道、轨迹选中。 */
+[Collection(GuiSerialCollection.CollectionName)]
 public sealed class MainViewModelTests
 {
     [Fact]
@@ -130,7 +133,7 @@ public sealed class MainViewModelTests
         Assert.Contains("dsh-", message.Text);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task Submit_TextMessage_IsRenderedOnceFromSessionEvent()
     {
         using var environment = await GuiTestEnvironment.CreateAsync();
@@ -197,5 +200,150 @@ public sealed class MainViewModelTests
         var node = Assert.Single(nodes, candidate => candidate.SessionId == sessionId);
         Assert.Same(resumed, node.Agent);
         Assert.True(node.IsLive);
+    }
+
+    [Fact]
+    public async Task SetMode_AppliesSessionApprovalPolicy_AndUpdatesPermissionLabel()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+        var approval = environment.App.Ctx.Get<ApprovalService>(ApprovalService.ServiceName)!;
+        environment.Agent.Session.Append(new TurnStartPayload(1));
+
+        viewModel.SetModeCommand.Execute("readonly");
+        Assert.Equal(ApprovalPolicy.Never, approval.EffectivePolicy(environment.Agent.Session));
+        Assert.Equal("只读（自动拒绝）", viewModel.Composer.PermissionLabel);
+
+        viewModel.SetModeCommand.Execute("full");
+        Assert.Equal(ApprovalPolicy.Auto, approval.EffectivePolicy(environment.Agent.Session));
+        Assert.Equal("Full access", viewModel.Composer.PermissionLabel);
+
+        viewModel.SetModeCommand.Execute("standard");
+        Assert.Equal(ApprovalPolicy.Ask, approval.EffectivePolicy(environment.Agent.Session));
+    }
+
+    [AvaloniaFact]
+    public async Task ApprovalRequest_ReachesUnifiedDecisionWindow()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+        DecisionViewModel? seen = null;
+        viewModel.DecisionRequested += decision =>
+        {
+            seen = decision;
+            return Task.FromResult<object?>(ApprovalOutcome.AllowedOnce);
+        };
+        var approval = environment.App.Ctx.Get<ApprovalService>(ApprovalService.ServiceName)!;
+        environment.Agent.Session.Append(new TurnStartPayload(1));
+
+        var request = approval.Request(
+            new ApprovalRequest(environment.Agent, "bash", ToolCallId.Create("call-1"), null, """{"command":"ls -la"}"""),
+            default);
+        var outcome = await PumpAsync(request);
+
+        Assert.Equal(ApprovalOutcome.AllowedOnce, outcome);
+        Assert.NotNull(seen);
+        Assert.True(seen!.IsApproval);
+        Assert.Equal("bash", seen.ToolName);
+        Assert.Equal("ls -la", seen.Command);
+    }
+
+    [AvaloniaFact]
+    public async Task UserQuestion_ReachesUnifiedDecisionWindow()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+        viewModel.DecisionRequested += decision => Task.FromResult<object?>(new AskUserQuestionAnswer(
+            [new AskUserQuestionAnswerItem(decision.Questions[0].Item.Id, ["继续"])]));
+        var questions = environment.App.Ctx.Get<UserQuestionService>(UserQuestionService.ServiceName)!;
+
+        var ask = questions.Ask(new AskUserQuestionRequest(
+            [new AskUserQuestionItem("q1", "继续吗？", Options: [new AskUserQuestionOption("继续"), new AskUserQuestionOption("停下")])],
+            environment.Agent));
+        var answer = await PumpAsync(ask);
+
+        Assert.Equal("继续", Assert.Single(answer.Answers).Selected[0]);
+    }
+
+    [Fact]
+    public async Task TraceFilter_NarrowsTraceView_WithoutDroppingItems()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        var session = environment.Agent.Session;
+        session.Append(new UserMessagePayload(MessageFactory.CreateUserText("你好")), new SurfaceOp.Append());
+        session.Append(new TurnStartPayload(1));
+        session.Append(new RequestContextPayload("test", "test-model"));
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+
+        var filter = viewModel.TraceFilters.First(candidate => candidate.Kind == TraceKind.Context);
+        viewModel.SelectTraceFilterCommand.Execute(filter);
+
+        Assert.All(viewModel.TraceView, item => Assert.Equal(TraceKind.Context, item.Kind));
+        Assert.Contains(viewModel.TraceItems, item => item.Kind == TraceKind.Turn);
+    }
+
+    [Fact]
+    public async Task SearchText_FiltersSessions()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+        Assert.NotEmpty(viewModel.Workspaces);
+
+        viewModel.SearchText = "不存在的关键词";
+
+        Assert.Empty(viewModel.Workspaces);
+        viewModel.SearchText = "";
+        Assert.NotEmpty(viewModel.Workspaces);
+    }
+
+    [Fact]
+    public async Task Suggestions_OfferCommandsAndSessionMentions()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+
+        viewModel.Composer.Input = "/mo";
+
+        Assert.True(viewModel.IsSuggestionOpen);
+        Assert.Contains(viewModel.Suggestions, suggestion => suggestion.Label == "/model");
+
+        viewModel.Composer.Input = $"@{environment.Agent.Id.Value[..6]}";
+
+        Assert.True(viewModel.IsSuggestionOpen);
+        Assert.Contains(viewModel.Suggestions, suggestion => suggestion.InsertText == $"@{environment.Agent.Id.Value}");
+    }
+
+    [Fact]
+    public async Task WorkspaceView_SwitchPersistsIntoGuiParameters()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+
+        viewModel.SetWorkspaceViewCommand.Execute("filesystem");
+
+        Assert.True(viewModel.IsFileSystemView);
+        Assert.Equal(GuiSettings.ViewFilesystem, viewModel.Gui.Load().WorkspaceView);
+    }
+
+    [Fact]
+    public async Task DeleteCurrentSession_IsRefused()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+        var node = Assert.Single(viewModel.Workspaces.SelectMany(workspace => workspace.Sessions));
+
+        viewModel.DeleteSessionCommand.Execute(node);
+
+        Assert.Equal("不能删除当前正在使用的会话", viewModel.StatusText);
+    }
+
+    private static async Task<T> PumpAsync<T>(Task<T> task)
+    {
+        for (var attempt = 0; attempt < 500 && !task.IsCompleted; attempt += 1)
+        {
+            await Task.Delay(5);
+            Dispatcher.UIThread.RunJobs();
+        }
+        return await task;
     }
 }

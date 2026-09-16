@@ -50,9 +50,53 @@ internal static partial class SettingsDocument
             builder.Append('\n').Append(Indent).Append(Quote(name)).Append(':');
             builder.Append('\n').Append(Indent).Append(Indent).Append("enabled: ").Append(Bool(setting.Enabled));
             foreach (var (key, value) in setting.Parameters)
-                builder.Append('\n').Append(Indent).Append(Indent).Append(key).Append(": ").Append(FormatScalar(value));
+            {
+                builder.Append('\n').Append(Indent).Append(Indent).Append(FormatKey(key)).Append(':');
+                RenderValue(builder, value, Indent + Indent + Indent);
+            }
         }
         return builder.ToString();
+    }
+
+    /** 嵌套 mapping/list 逐层展开(插件参数可以带 gpu/window 这类子段), 标量走 FormatScalar。 */
+    private static void RenderValue(StringBuilder builder, object? value, string indent)
+    {
+        switch (value)
+        {
+            case IReadOnlyDictionary<string, object?> map:
+                if (map.Count == 0)
+                {
+                    builder.Append(" {}");
+                    return;
+                }
+                foreach (var (key, item) in map)
+                {
+                    builder.Append('\n').Append(indent).Append(FormatKey(key)).Append(':');
+                    RenderValue(builder, item, indent + Indent);
+                }
+                return;
+            case string text:
+                builder.Append(' ').Append(FormatString(text));
+                return;
+            case IEnumerable<object?> sequence:
+            {
+                var items = sequence.ToList();
+                if (items.Count == 0)
+                {
+                    builder.Append(" []");
+                    return;
+                }
+                foreach (var item in items)
+                {
+                    builder.Append('\n').Append(indent).Append('-');
+                    RenderValue(builder, item, indent + Indent);
+                }
+                return;
+            }
+            default:
+                builder.Append(' ').Append(FormatScalar(value));
+                return;
+        }
     }
 
     private static int FindPluginsStart(string[] lines)
@@ -83,6 +127,12 @@ internal static partial class SettingsDocument
     private static string Bool(bool value) => value ? "true" : "false";
 
     private static string Quote(string name) => $"\"{Escape(name)}\"";
+
+    private static string FormatKey(string key)
+    {
+        var plain = PlainScalar().IsMatch(key) && !ReservedScalars.Contains(key);
+        return plain ? key : Quote(key);
+    }
 
     private static string Escape(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
 

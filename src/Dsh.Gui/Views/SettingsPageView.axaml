@@ -1,18 +1,319 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="using:System"
              xmlns:vm="using:Dsh.Gui.ViewModels"
              x:Class="Dsh.Gui.Views.SettingsPageView"
              x:DataType="vm:MainViewModel"
              x:CompileBindings="True"
              FontFamily="{DynamicResource Font.Ui}">
 
-  <Grid RowDefinitions="Auto,*" Background="{DynamicResource Brush.Bg.Chat}">
+  <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource Brush.Bg.Chat}">
+
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="20,14,20,10">
       <TextBlock Text="设置" Classes="Title" VerticalAlignment="Center" />
       <Button Grid.Column="1" Classes="Ghost" Command="{Binding ShowChatCommand}" Content="返回对话" />
     </Grid>
-    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-      <ContentControl Name="LegacyHost" Margin="16,0,16,16" />
-    </ScrollViewer>
+
+    <Grid Grid.Row="1" ColumnDefinitions="200,*">
+      <ItemsControl ItemsSource="{Binding Preferences.Sections}" Margin="12,0,10,12">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:SettingsNavItemViewModel">
+            <Button Classes="SessionItem" Classes.selected="{Binding IsSelected}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Command="{Binding SelectCommand}" CommandParameter="{Binding}">
+              <TextBlock Text="{Binding Label}" />
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <ScrollViewer Grid.Column="1" Classes="Slim" Padding="8,0,20,16">
+        <StackPanel Spacing="14">
+
+          <StackPanel Spacing="12" IsVisible="{Binding Preferences.IsAppearanceSection}">
+            <TextBlock Text="外观" Classes="Title" />
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="主题" Classes="Secondary" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button Classes="Chip" Classes.selected="{Binding Preferences.IsDarkTheme}" Content="深色"
+                          Command="{Binding Preferences.SelectThemeCommand}" CommandParameter="dark" />
+                  <Button Classes="Chip" Classes.selected="{Binding Preferences.IsLightTheme}" Content="浅色"
+                          Command="{Binding Preferences.SelectThemeCommand}" CommandParameter="light" />
+                  <Button Classes="Chip" Classes.selected="{Binding Preferences.IsSystemTheme}" Content="跟随系统"
+                          Command="{Binding Preferences.SelectThemeCommand}" CommandParameter="system" />
+                </StackPanel>
+                <TextBlock Text="主题写入 settings.yaml 的 gui 参数 theme（dark / light / system）。" Classes="Tertiary" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="字号" Classes="Secondary" />
+                <Grid ColumnDefinitions="*,Auto">
+                  <Slider Minimum="11" Maximum="18" TickFrequency="0.5" VerticalAlignment="Center"
+                          Value="{Binding Preferences.FontSize, Mode=TwoWay}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Preferences.FontSizeText}" Classes="Mono"
+                             Margin="10,0,0,0" VerticalAlignment="Center" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Classes="Primary" Content="保存外观" Command="{Binding Preferences.PersistAppearanceCommand}" />
+                  <Button Classes="Ghost" Content="重置" Command="{Binding Preferences.ResetFontSizeCommand}" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="6">
+                <TextBlock Text="工作区默认视图" Classes="Secondary" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="{Binding Preferences.WorkspaceView}" Classes="Mono" VerticalAlignment="Center" />
+                  <TextBlock Text="solution = 解决方案视图，filesystem = 文件系统视图" Classes="Tertiary" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Classes="Chip" Classes.selected="{Binding Preferences.IsSolutionDefault}" Content="解决方案视图"
+                          Command="{Binding Preferences.SelectWorkspaceViewCommand}" CommandParameter="solution" />
+                  <Button Classes="Chip" Classes.selected="{Binding Preferences.IsFileSystemDefault}" Content="文件系统视图"
+                          Command="{Binding Preferences.SelectWorkspaceViewCommand}" CommandParameter="filesystem" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Spacing="12" IsVisible="{Binding Preferences.IsModelSection}">
+            <TextBlock Text="模型与 Provider" Classes="Title" />
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="当前模型" Classes="Secondary" />
+                <ListBox ItemsSource="{Binding Preferences.Models}" SelectedItem="{Binding Preferences.SelectedModel}" MaxHeight="180" />
+                <Button Classes="Primary" HorizontalAlignment="Left" Content="切换"
+                        Command="{Binding Preferences.SwitchModelCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="推理强度" Classes="Secondary" />
+                <ListBox ItemsSource="{Binding Preferences.ReasoningEfforts}" SelectedItem="{Binding Preferences.SelectedEffort}" MaxHeight="140" />
+                <Button Classes="Primary" HorizontalAlignment="Left" Content="应用"
+                        Command="{Binding Preferences.SwitchReasoningCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Provider" Classes="Secondary" />
+                <ListBox ItemsSource="{Binding Preferences.Providers}" SelectedItem="{Binding Preferences.SelectedProvider}" MaxHeight="200">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ProviderRowViewModel">
+                      <Grid ColumnDefinitions="180,140,*,70">
+                        <TextBlock Text="{Binding Name}" Classes="Secondary" />
+                        <TextBlock Grid.Column="1" Text="{Binding Type}" Classes="Tertiary" />
+                        <TextBlock Grid.Column="2" Text="{Binding BaseUrl}" Classes="Tertiary" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="3" Text="{Binding ModelCount}" Classes="Tertiary" HorizontalAlignment="Right" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Classes="Primary" Content="保存" Command="{Binding Preferences.SaveProviderCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
+                  <Button Classes="Ghost" Content="删除" Command="{Binding Preferences.RemoveProviderCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
+                  <Button Classes="Ghost" Content="测试连接" Command="{Binding Preferences.TestConnectionCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
+                </StackPanel>
+                <TextBox Text="{Binding Preferences.ProviderName}" Watermark="name，例如 deepseek" />
+                <TextBox Text="{Binding Preferences.ProviderType}" Watermark="type，例如 openai-compatible / deepseek / anthropic" />
+                <TextBox Text="{Binding Preferences.ProviderBaseUrl}" Watermark="baseUrl，例如 https://api.deepseek.com" />
+                <TextBox Text="{Binding Preferences.ProviderApiKey}" Watermark="apiKey" />
+                <TextBox Text="{Binding Preferences.ProviderModelIds}" Watermark="modelIds，逗号或空格分隔（可选）" />
+                <TextBlock Text="{Binding Preferences.Status}" Classes="Tertiary" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Spacing="12" IsVisible="{Binding Preferences.IsSafetySection}">
+            <TextBlock Text="安全策略" Classes="Title" />
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <CheckBox Content="自动批准普通工具（autoApprove）" IsChecked="{Binding Preferences.AutoApprove, Mode=TwoWay}" />
+                <TextBlock Text="黑名单（每行一条）" Classes="Secondary" />
+                <TextBox AcceptsReturn="True" Height="160" TextWrapping="Wrap"
+                         Watermark="每行一条，例如 bash: rm -rf /*"
+                         Text="{Binding Preferences.BlacklistText, Mode=TwoWay}" />
+                <Button Classes="Primary" HorizontalAlignment="Left" Content="保存"
+                        Command="{Binding Preferences.SaveSafetyCommand}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Spacing="12" IsVisible="{Binding Preferences.IsGraphicsSection}">
+            <TextBlock Text="图形与加速" Classes="Title" />
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <CheckBox Content="启用 GPU 加速（重启生效）" IsChecked="{Binding Preferences.GpuEnabled, Mode=TwoWay}" />
+                <TextBlock Text="使用哪张显卡" Classes="Secondary" />
+                <Grid ColumnDefinitions="*,Auto">
+                  <ComboBox HorizontalAlignment="Stretch"
+                            ItemsSource="{Binding Preferences.GpuAdapters}"
+                            SelectedItem="{Binding Preferences.SelectedGpuAdapterOption, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:GpuAdapterOption">
+                        <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Grid.Column="1" Text="{Binding Preferences.GpuCurrent}" Classes="Tertiary"
+                             Margin="10,0,0,0" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock Text="{Binding Preferences.GpuHint}" Classes="Tertiary" TextWrapping="Wrap" />
+                <Expander Header="高级：渲染后端" HorizontalAlignment="Stretch">
+                  <StackPanel Spacing="6">
+                    <ComboBox MinWidth="220" HorizontalAlignment="Left"
+                              ItemsSource="{Binding Preferences.GpuBackends}"
+                              SelectedItem="{Binding Preferences.SelectedGpuBackend, Mode=TwoWay}" />
+                    <TextBlock Text="auto 优先用显卡，失败自动回退软件渲染；只有排查驱动问题时才需要指定 opengl / vulkan / software。"
+                               Classes="Tertiary" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Expander>
+                <TextBlock Text="关闭行为" Classes="Secondary" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <ComboBox MinWidth="220" ItemsSource="{Binding Preferences.CloseActions}" SelectedItem="{Binding Preferences.SelectedCloseAction, Mode=TwoWay}" />
+                  <TextBlock Text="{Binding Preferences.SelectedCloseAction}" Classes="Mono" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="tray = 最小化到托盘，quit = 直接退出，ask = 每次询问" Classes="Tertiary" />
+                <Button Classes="Primary" HorizontalAlignment="Left" Content="保存"
+                        Command="{Binding Preferences.SaveGraphicsCommand}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Spacing="12" IsVisible="{Binding Preferences.IsStorageSection}">
+            <TextBlock Text="会话与存储" Classes="Title" />
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="会话目录" Classes="Secondary" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="{Binding Preferences.SessionsPath}" Classes="Mono" TextWrapping="Wrap" VerticalAlignment="Center" />
+                  <Button Classes="Ghost" Content="打开目录" Command="{Binding Preferences.OpenSessionsFolderCommand}" VerticalAlignment="Center" />
+                </StackPanel>
+                <CheckBox Content="自动压缩上下文（compaction）" IsChecked="{Binding Preferences.CompactionAuto, Mode=TwoWay}" />
+                <TextBlock Text="压缩阈值（%）" Classes="Secondary" />
+                <Slider Minimum="10" Maximum="95" VerticalAlignment="Center"
+                        Value="{Binding Preferences.CompactionThreshold, Mode=TwoWay}" />
+                <Button Classes="Primary" HorizontalAlignment="Left" Content="保存"
+                        Command="{Binding Preferences.SaveStorageCommand}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Spacing="12" IsVisible="{Binding Preferences.IsPluginsSection}">
+            <TextBlock Text="插件与 MCP" Classes="Title" />
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="已安装插件" Classes="Secondary" />
+                <ItemsControl ItemsSource="{Binding Preferences.Plugins}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PluginRowViewModel">
+                      <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding Package}" Classes="Mono" />
+                          <TextBlock Text="{Binding Description}" Classes="Tertiary" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="8,0"
+                                    VerticalAlignment="Center">
+                          <TextBlock Text="已启用" Classes="Tertiary" IsVisible="{Binding Enabled}" />
+                          <TextBlock Text="已禁用" Classes="Tertiary" IsVisible="{Binding !Enabled}" />
+                        </StackPanel>
+                        <Button Grid.Column="2" Classes="Ghost" VerticalAlignment="Center"
+                                Content="{Binding ActionLabel}"
+                                Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Preferences.PluginActionCommand}"
+                                CommandParameter="{Binding WireAction}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Text="{Binding Preferences.PluginInput}" Watermark="包名或本地路径，例如 ./plugins/my-plugin" />
+                  <Button Grid.Column="1" Classes="Primary" Margin="8,0,0,0" Content="安装"
+                          Command="{Binding Preferences.AddPluginCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
+                </Grid>
+                <Button Classes="Ghost" HorizontalAlignment="Left" Content="刷新列表"
+                        Command="{Binding Preferences.RefreshPluginsCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="MCP 服务器" Classes="Secondary" />
+                <ItemsControl ItemsSource="{Binding Preferences.McpServers}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:McpRowViewModel">
+                      <Grid ColumnDefinitions="160,90,*,60" Margin="0,4">
+                        <TextBlock Text="{Binding Name}" Classes="Mono" />
+                        <TextBlock Grid.Column="1" Text="{Binding Transport}" Classes="Tertiary" />
+                        <TextBlock Grid.Column="2" Text="{Binding Target}" Classes="Tertiary" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="3" Text="已启用" Classes="Tertiary" HorizontalAlignment="Right" IsVisible="{Binding Enabled}" />
+                        <TextBlock Grid.Column="3" Text="已禁用" Classes="Tertiary" HorizontalAlignment="Right" IsVisible="{Binding !Enabled}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Spacing="12" IsVisible="{Binding Preferences.IsShortcutsSection}">
+            <TextBlock Text="快捷键" Classes="Title" />
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <ItemsControl ItemsSource="{Binding Preferences.Shortcuts}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ShortcutRowViewModel">
+                      <Grid ColumnDefinitions="200,*" Margin="0,3">
+                        <TextBlock Text="{Binding Keys}" Classes="Mono" />
+                        <TextBlock Grid.Column="1" Text="{Binding Description}" Classes="Secondary" VerticalAlignment="Center" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="Ctrl+W 触发关闭行为（托盘 / 退出 / 询问），Ctrl+Q 直接退出。" Classes="Tertiary" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Spacing="12" IsVisible="{Binding Preferences.IsAboutSection}">
+            <TextBlock Text="关于" Classes="Title" />
+
+            <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+              <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="版本" Classes="Tertiary" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Preferences.VersionText}" Classes="Mono" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="提交" Classes="Tertiary" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Preferences.CommitText}" Classes="Mono" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="{Binding Preferences.ConfigPath}" Classes="Mono" TextWrapping="Wrap" VerticalAlignment="Center" />
+                  <Button Classes="Ghost" Content="打开配置目录" Command="{Binding Preferences.OpenConfigFolderCommand}" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="DeepSeek Harness · 许可证见仓库 LICENSE" Classes="Tertiary" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <TextBlock Grid.Row="2" Text="{Binding Preferences.Status}" Classes="Tertiary"
+               Margin="20,0,20,10" TextTrimming="CharacterEllipsis" />
   </Grid>
 </UserControl>

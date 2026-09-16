@@ -110,6 +110,36 @@ public class InteractionTests
         }
 
         [Fact]
+        public async Task AllowedForSession_Grants_Tool_And_Skips_Later_Asks()
+        {
+            using var harness = new Harness();
+            var approval = ApprovalService.Register(harness.Ctx);
+            var dispatches = 0;
+            harness.Ctx.OnWaterfall<ApprovalRequestNotification>((_, _) =>
+            {
+                dispatches++;
+                return ValueTask.FromResult<object?>(dispatches == 1 ? ApprovalOutcome.AllowedForSession : ApprovalOutcome.Rejected);
+            }, new EventOptions { Global = true });
+            var agent = CreateAgent(harness);
+
+            var first = await approval.Request(new ApprovalRequest(agent, "bash", ToolCallId.Create("call-1"), Arguments: """{"cmd":"ls"}"""), default);
+            var second = await approval.Request(new ApprovalRequest(agent, "bash", ToolCallId.Create("call-2")), default);
+
+            Assert.Equal(ApprovalOutcome.AllowedForSession, first);
+            Assert.Equal(ApprovalOutcome.AllowedOnce, second);
+            Assert.Equal(1, dispatches);
+
+            var other = await approval.Request(new ApprovalRequest(agent, "write", ToolCallId.Create("call-3")), default);
+
+            Assert.Equal(ApprovalOutcome.Rejected, other);
+            Assert.Equal(2, dispatches);
+            var proposed = agent.Session.SnapshotEvents().Select(e => e.Data).OfType<ApprovalAskedPayload>().First();
+            Assert.Equal("""{"cmd":"ls"}""", proposed.Arguments);
+            Assert.True(ApprovalService.HasGrant(agent.Session, "bash"));
+            Assert.False(ApprovalService.HasGrant(agent.Session, "write"));
+        }
+
+        [Fact]
         public async Task NoAnswerer_Fails_Closed_Unavailable()
         {
             using var harness = new Harness();
@@ -119,6 +149,19 @@ public class InteractionTests
             var outcome = await approval.Request(new ApprovalRequest(agent, "bash", ToolCallId.Create("call-1")), default);
 
             Assert.Equal(ApprovalOutcome.Unavailable, outcome);
+        }
+
+        [Fact]
+        public void SetPolicy_RecordsEvent_AndQueuesNote()
+        {
+            using var harness = new Harness();
+            var approval = ApprovalService.Register(harness.Ctx);
+            var agent = CreateAgent(harness);
+
+            approval.SetPolicy(agent, ApprovalPolicy.Never);
+
+            Assert.Equal(ApprovalPolicy.Never, approval.EffectivePolicy(agent.Session));
+            Assert.Contains(agent.Session.SnapshotEvents().Select(e => e.Data), data => data is ApprovalPolicyPayload);
         }
 
         [Fact]
@@ -591,12 +634,12 @@ public class InteractionTests
 
         public void Dispose() => _harness.Dispose();
 
-        private Task<ToolExecutionResult> Execute(IAgent agent)
+        private Task<ToolExecutionResult> Execute(IAgent agent, string arguments = "{}")
             => _harness.Tools.Execute(new ToolExecutionInput
             {
                 CallId = ToolCallId.Create($"call-{Guid.NewGuid():N}"),
                 Name = "guarded",
-                Arguments = JsonDocument.Parse("{}").RootElement,
+                Arguments = JsonDocument.Parse(arguments).RootElement,
                 Agent = agent,
                 Signal = default,
             });
@@ -615,6 +658,20 @@ public class InteractionTests
             Assert.Equal("yes", string.Concat(result.Content.OfType<TextBlock>().Select(block => block.Text)));
             Assert.Contains(agent.Session.SnapshotEvents(), e => e.Data is ApprovalAskedPayload);
             Assert.Contains(agent.Session.SnapshotEvents(), e => e.Data is ApprovalDecidedPayload);
+        }
+
+        /** 审批弹窗要展示工具参数: RawArguments 默认是 "{}", 结论必须取真实 Arguments。 */
+        [Fact]
+        public async Task ApprovalPayload_Carries_ToolArguments()
+        {
+            ApprovalService.Register(_harness.Ctx);
+            using var answerer = ApprovalAnswerers.AutoApprove(_harness.Ctx);
+            var agent = CreateAgent(_harness);
+
+            await Execute(agent, """{"command":"echo hi"}""");
+
+            var asked = Assert.Single(agent.Session.SnapshotEvents().Select(e => e.Data).OfType<ApprovalAskedPayload>());
+            Assert.Equal("""{"command":"echo hi"}""", asked.Arguments);
         }
 
         [Fact]

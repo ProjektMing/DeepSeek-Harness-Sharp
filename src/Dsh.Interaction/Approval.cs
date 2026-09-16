@@ -1,6 +1,5 @@
 #pragma warning disable CA2255
 using Dsh.Plugins;
-using System.Runtime.CompilerServices;
 using Dsh.Runtime;
 using Dsh.Runtime.Events;
 using Dsh.Core;
@@ -11,7 +10,8 @@ namespace Dsh.Interaction;
 public enum ApprovalPolicy
 {
     Ask,
-    Never
+    Never,
+    Auto,
 }
 
 public static class ApprovalEvents
@@ -19,9 +19,15 @@ public static class ApprovalEvents
     public const string Asked = "approval/asked";
     public const string Decided = "approval/decided";
     public const string Policy = "approval/policy";
+    public const string Granted = "approval/granted";
 }
 
-public sealed record ApprovalAskedPayload(string Id, string ToolName, ToolCallId? CallId = null, string? Reason = null)
+public sealed record ApprovalAskedPayload(
+    string Id,
+    string ToolName,
+    ToolCallId? CallId = null,
+    string? Reason = null,
+    string? Arguments = null)
     : SessionEventPayload
 {
     public override string Type => ApprovalEvents.Asked;
@@ -30,6 +36,12 @@ public sealed record ApprovalAskedPayload(string Id, string ToolName, ToolCallId
 public sealed record ApprovalDecidedPayload(string Id, ApprovalOutcome Outcome) : SessionEventPayload
 {
     public override string Type => ApprovalEvents.Decided;
+}
+
+/** 用户在弹窗里选择「本会话内不再询问」后写入; 同一会话内该工具直接放行。 */
+public sealed record ApprovalGrantedPayload(string ToolName) : SessionEventPayload
+{
+    public override string Type => ApprovalEvents.Granted;
 }
 
 public sealed record ApprovalPolicyPayload(ApprovalPolicy Policy, string? Source = null) : SessionEventPayload
@@ -45,6 +57,7 @@ public sealed class ApprovalService : Service, IApprovalService
 
     private const string NeverSentence = "Approval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`).";
     private const string AskSentence = "Approval policy: ask. Operations that require approval may ask through the configured answerers; without an available answerer, the request fails closed.";
+    private const string AutoSentence = "Approval policy: full access. Operations that require approval are approved automatically in this session (still subject to safety.blacklist); ask the user before anything destructive.";
 
     private readonly ApprovalConfig _config;
 
@@ -55,7 +68,12 @@ public sealed class ApprovalService : Service, IApprovalService
         systemPrompt?.Context(PromptContext.Literal(
             "approval:policy",
             PromptOrders.ContextApprovalPolicy,
-            _config.Policy == ApprovalPolicy.Never ? NeverSentence : AskSentence));
+            _config.Policy switch
+            {
+                ApprovalPolicy.Never => NeverSentence,
+                ApprovalPolicy.Auto => AutoSentence,
+                _ => AskSentence,
+            }));
     }
 
     public static ApprovalService Register(Context ctx, ApprovalConfig? config = null) => new(ctx, config);
@@ -71,6 +89,20 @@ public sealed class ApprovalService : Service, IApprovalService
                 return payload.Policy;
         }
         return null;
+    }
+
+    /** 会话级授权: 只要该工具在本会话被「总是允许」过, 后续调用不再询问。 */
+    public static bool HasGrant(Session session, string toolName)
+    {
+        for (var seq = session.Seq - 1; seq >= 0; seq--)
+        {
+            if (session.EventAt(seq)?.Data is ApprovalGrantedPayload payload
+                && string.Equals(payload.ToolName, toolName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     public ApprovalPolicy EffectivePolicy(Session session) => OverrideOf(session) ?? _config.Policy;
@@ -97,9 +129,11 @@ public sealed class ApprovalService : Service, IApprovalService
                 + "Ask from inside the turn that needs the decision.");
         }
         var id = Guid.NewGuid().ToString("N");
-        session.Append(new ApprovalAskedPayload(id, request.ToolName, request.CallId, request.Reason));
+        session.Append(new ApprovalAskedPayload(id, request.ToolName, request.CallId, request.Reason, request.Arguments));
         var outcome = await Decide(request, session, signal);
         session.Append(new ApprovalDecidedPayload(id, outcome));
+        if (outcome == ApprovalOutcome.AllowedForSession)
+            session.Append(new ApprovalGrantedPayload(request.ToolName));
         return outcome;
     }
 
@@ -109,6 +143,8 @@ public sealed class ApprovalService : Service, IApprovalService
             return ApprovalOutcome.Cancelled;
         if (EffectivePolicy(session) == ApprovalPolicy.Never)
             return ApprovalOutcome.Rejected;
+        if (EffectivePolicy(session) == ApprovalPolicy.Auto || HasGrant(session, request.ToolName))
+            return ApprovalOutcome.AllowedOnce;
         var answer = DispatchAnswerers(request);
         if (!signal.CanBeCanceled)
             return await answer;
@@ -151,8 +187,12 @@ public sealed class ApprovalService : Service, IApprovalService
         return false;
     }
 
-    private static string WireName(ApprovalPolicy policy)
-        => policy == ApprovalPolicy.Never ? "never" : "ask";
+    private static string WireName(ApprovalPolicy policy) => policy switch
+    {
+        ApprovalPolicy.Never => "never",
+        ApprovalPolicy.Auto => "full access",
+        _ => "ask",
+    };
 }
 
 public static class ApprovalAnswerers
@@ -202,5 +242,6 @@ internal static class ApprovalCodecRegistration
         SessionEventCodec.Register<ApprovalAskedPayload>(ApprovalEvents.Asked);
         SessionEventCodec.Register<ApprovalDecidedPayload>(ApprovalEvents.Decided);
         SessionEventCodec.Register<ApprovalPolicyPayload>(ApprovalEvents.Policy);
+        SessionEventCodec.Register<ApprovalGrantedPayload>(ApprovalEvents.Granted);
     }
 }

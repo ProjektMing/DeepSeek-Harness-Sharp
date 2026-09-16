@@ -82,6 +82,29 @@ public class LoggingTests
         }
     }
 
+    /** 同一个 home 里同时跑两个 dsh(GUI + CLI/TUI, 或两个实例)时必须都能落盘: 旧实现用 FileShare.Read 会直接抛 IOException 把进程带崩。 */
+    [Fact]
+    public void FileLogProvider_TwoProvidersShareOneDirectory()
+    {
+        var directory = CreateScratchDirectory();
+        try
+        {
+            using var first = new FileLogProvider(directory, new LoggingOptions());
+            using var second = new FileLogProvider(directory, new LoggingOptions());
+            first.CreateLogger("first").LogInformation("from first");
+            second.CreateLogger("second").LogInformation("from second");
+
+            var file = Assert.Single(Directory.GetFiles(directory, "dsh-*.log"));
+            var content = ReadWhileWriting(file);
+            Assert.Contains("from first", content);
+            Assert.Contains("from second", content);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     [Fact]
     public void FileLogProvider_RotatesWhenExceedingMaxBytes()
     {

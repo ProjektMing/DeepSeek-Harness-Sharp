@@ -1,0 +1,106 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Dsh.Gui.ViewModels"
+        x:Class="Dsh.Gui.Views.DecisionDialog"
+        x:DataType="vm:DecisionViewModel"
+        x:CompileBindings="True"
+        Title="需要你决定"
+        Width="580"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        FontFamily="{DynamicResource Font.Ui}"
+        FontSize="{DynamicResource FontSize.Body}"
+        Background="{DynamicResource Brush.Bg.Card}">
+
+  <ScrollViewer Classes="Slim" MaxHeight="680" Padding="20,18">
+    <StackPanel Spacing="14">
+      <StackPanel Spacing="3">
+        <TextBlock Classes="Title" Text="{Binding Heading}" />
+        <TextBlock Classes="Secondary" Text="{Binding QuestionSummary}" />
+      </StackPanel>
+
+      <StackPanel Spacing="12" IsVisible="{Binding IsApproval}">
+        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="6">
+          <TextBlock Grid.Row="0" Grid.Column="0" Classes="Secondary" Text="工具" VerticalAlignment="Top" />
+          <TextBlock Grid.Row="0" Grid.Column="1" Classes="Body" Text="{Binding ToolName}" />
+          <TextBlock Grid.Row="1" Grid.Column="0" Classes="Secondary" Text="命令 / 参数" VerticalAlignment="Top" />
+          <ScrollViewer Grid.Row="1" Grid.Column="1" Classes="Slim" MaxHeight="160">
+            <SelectableTextBlock Text="{Binding Command}" TextWrapping="Wrap"
+                                 FontFamily="{DynamicResource Font.Mono}"
+                                 FontSize="{DynamicResource FontSize.List}"
+                                 Foreground="{DynamicResource Brush.Text.Primary}" />
+          </ScrollViewer>
+          <TextBlock Grid.Row="2" Grid.Column="0" Classes="Secondary" Text="原因" VerticalAlignment="Top" />
+          <TextBlock Grid.Row="2" Grid.Column="1" Classes="Body" Text="{Binding Reason}" />
+        </Grid>
+
+        <TextBlock Classes="Body" Text="{Binding Impact}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Status.Warning}"
+                   IsVisible="{Binding HasImpact}" />
+
+        <CheckBox Content="本会话内该工具不再询问" IsChecked="{Binding RememberForSession, Mode=TwoWay}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+          <Button Classes="Ghost" Content="拒绝 (n)" Command="{Binding RejectCommand}" />
+          <Button Classes="Primary" Content="仅本次允许 (y)" Command="{Binding AllowOnceCommand}" />
+          <Button Classes="Primary" Content="总是允许 (a)" Command="{Binding AllowAlwaysCommand}" />
+        </StackPanel>
+      </StackPanel>
+
+      <StackPanel Spacing="14" IsVisible="{Binding IsQuestion}">
+        <ItemsControl ItemsSource="{Binding Questions}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:DecisionQuestionViewModel">
+              <StackPanel Spacing="8" Margin="0,0,0,16">
+                <TextBlock Classes="Tertiary" Text="{Binding Header}" IsVisible="{Binding HasHeader}" />
+                <TextBlock Classes="Body" Text="{Binding Question}" />
+                <ScrollViewer Classes="Slim" MaxHeight="200" IsVisible="{Binding HasDetail}">
+                  <SelectableTextBlock Text="{Binding Detail}" TextWrapping="Wrap"
+                                       FontFamily="{DynamicResource Font.Mono}"
+                                       FontSize="{DynamicResource FontSize.List}"
+                                       Foreground="{DynamicResource Brush.Text.Primary}" />
+                </ScrollViewer>
+
+                <ItemsControl ItemsSource="{Binding Options}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DecisionOptionViewModel">
+                      <Button Classes="Chip"
+                              Classes.selected="{Binding IsSelected}"
+                              Command="{Binding $parent[ItemsControl].((vm:DecisionQuestionViewModel)DataContext).SelectCommand}"
+                              CommandParameter="{Binding}"
+                              Margin="0,0,0,6"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Left"
+                              Padding="10,7">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
+                          <TextBlock Classes="Tertiary" Text="{Binding Description}"
+                                     IsVisible="{Binding HasDescription}" TextWrapping="Wrap" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBox Watermark="也可以直接输入你的答案"
+                         Text="{Binding CustomText, Mode=TwoWay}"
+                         IsVisible="{Binding AllowCustom}" />
+                <TextBlock Classes="Tertiary" Text="可多选" IsVisible="{Binding MultiSelect}" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+          <Button Classes="Primary" Content="提交"
+                  Command="{Binding $parent[Window].((vm:DecisionViewModel)DataContext).SubmitCommand}"
+                  IsEnabled="{Binding $parent[Window].((vm:DecisionViewModel)DataContext).CanSubmit}" />
+          <Button Classes="Ghost" Content="取消"
+                  Command="{Binding $parent[Window].((vm:DecisionViewModel)DataContext).CancelCommand}" />
+        </StackPanel>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

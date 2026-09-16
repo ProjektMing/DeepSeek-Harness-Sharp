@@ -1,8 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using Dsh.Boot;
 using Dsh.Core;
+using Dsh.Gui.Services;
 using Dsh.Gui.Views;
 using Dsh.Llm;
 
@@ -15,10 +16,15 @@ public static class GuiRunner
         string cwd,
         string? resumeSessionId = null)
     {
+        using var instance = SingleInstance.Acquire(app.Home.Root);
+        if (instance is null)
+            return 0;
+
+        var settings = new GuiSettings(app.Home).Load();
         var agents = app.Ctx.Get<AgentRegistry>(AgentRegistry.ServiceName)!;
         var agent = await OpenAgentAsync(app, agents, cwd, resumeSessionId);
 
-        var (exitCode, lastSession) = await RunAvaloniaAsync(app, agent);
+        var (exitCode, lastSession) = await RunAvaloniaAsync(app, agent, settings, instance);
         var sessions = app.Ctx.Get<SessionStore>(SessionStore.ServiceName)!;
         await sessions.Flush(lastSession);
         return exitCode;
@@ -42,7 +48,7 @@ public static class GuiRunner
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine($"dsh: session \"{resumeSessionId}\" cannot be resumed: {error.Message}");
+                await Console.Error.WriteLineAsync($"dsh: session \"{resumeSessionId}\" cannot be resumed: {error.Message}");
             }
         }
         var created = (AgentLoopAgent)(await agents.Create(new CreateAgentOptions(
@@ -53,7 +59,11 @@ public static class GuiRunner
         return created;
     }
 
-    private static Task<(int ExitCode, Session Session)> RunAvaloniaAsync(HarnessApp app, AgentLoopAgent agent)
+    private static Task<(int ExitCode, Session Session)> RunAvaloniaAsync(
+        HarnessApp app,
+        AgentLoopAgent agent,
+        GuiSettingsSnapshot settings,
+        SingleInstance instance)
     {
         var done = new TaskCompletionSource<(int, Session)>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
@@ -61,12 +71,18 @@ public static class GuiRunner
             try
             {
                 MainWindow? window = null;
+                instance.ActivationRequested += () =>
+                {
+                    if (window is not null)
+                        Dispatcher.UIThread.Post(() => window.ShowFromTray());
+                };
+                App.StartupAppearance = application => ThemeService.Apply(application, settings);
                 App.StartupWindowFactory = () =>
                 {
                     window = new MainWindow(app, agent);
                     return window;
                 };
-                var exitCode = BuildApp().StartWithClassicDesktopLifetime([], ShutdownMode.OnMainWindowClose);
+                var exitCode = BuildApp(settings).StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
                 done.TrySetResult((exitCode, window?.ViewModel?.CurrentAgent.Session ?? agent.Session));
             }
             catch (Exception error)
@@ -80,7 +96,11 @@ public static class GuiRunner
         return done.Task;
     }
 
-    private static AppBuilder BuildApp()
-        => AppBuilder.Configure<App>()
+    private static AppBuilder BuildApp(GuiSettingsSnapshot settings)
+    {
+        var builder = AppBuilder.Configure<App>()
             .UsePlatformDetect();
+        GpuPreference.Apply(builder, settings);
+        return builder;
+    }
 }
