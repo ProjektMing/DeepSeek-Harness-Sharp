@@ -34,7 +34,7 @@ public sealed class DefaultCompositionTests
             Assert.NotNull(tools.Get("session_search"));
             Assert.NotNull(app.Ctx.Get<Dsh.SessionQuery.SessionQueryService>(Dsh.SessionQuery.SessionQueryService.ServiceName, false));
             Assert.NotNull(app.Ctx.Get<Dsh.Core.IMemoryStore>(Dsh.Core.MemoryServices.Store, false));
-            Assert.NotNull(tools.Get("memory_write"));
+            Assert.NotNull(tools.Get("memory_save"));
 
             var settings = File.ReadAllText(Path.Combine(home.Root, "settings.yaml"));
             Assert.Contains("plugins:", settings);

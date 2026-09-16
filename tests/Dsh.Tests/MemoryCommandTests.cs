@@ -52,6 +52,48 @@ public sealed class MemoryCommandTests
     }
 
     [Fact]
+    public async Task Show_PrintsMemoryFileAndDigests()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "dsh-memory-cmd", Guid.NewGuid().ToString("N"));
+        var projectDir = Path.Combine(root, "project");
+        Directory.CreateDirectory(projectDir);
+        var home = new HarnessHome(Path.Combine(root, "home"));
+        try
+        {
+            var ctx = new Context();
+            _ = new SystemPrompt(ctx, new SystemPromptConfig());
+            var commands = CommandsService.Register(ctx);
+            var options = new HarnessOptions(home, Cwd: projectDir);
+            using var registration = MemoryCommand.Register(ctx, options);
+            var agent = new FakeAgent(ctx);
+
+            var hidden = await commands.Execute(agent, "/memory show");
+            Assert.NotNull(hidden);
+            Assert.IsType<CommandResult.Error>(hidden.Result);
+
+            await File.WriteAllTextAsync(
+                Path.Combine(projectDir, ".dsh-memory.md"),
+                "## Facts\n- a :: 1 (2026-09-16T09:35:17Z)\n");
+            var sidecar = Path.Combine(projectDir, ".dsh-memory");
+            var memory = new ProjectMemory(new FileMemoryStore(Path.Combine(projectDir, ".dsh-memory.md")), sidecar);
+            await memory.WriteDigestAsync(SessionId.Create("s-1"), "topic", "summary text");
+            await commands.Execute(agent, "/memory on");
+
+            var shown = await commands.Execute(agent, "/memory show");
+
+            Assert.NotNull(shown);
+            var success = Assert.IsType<CommandResult.Success>(shown.Result);
+            Assert.Contains("- a :: 1 (", success.Text);
+            Assert.Contains("s-1", success.Text);
+            Assert.Contains("summary text", success.Text);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task RejectsUnknownOption()
     {
         var root = Path.Combine(Path.GetTempPath(), "dsh-memory-cmd", Guid.NewGuid().ToString("N"));
