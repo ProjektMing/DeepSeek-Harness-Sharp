@@ -1,6 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:sys="using:System"
              xmlns:vm="using:Dsh.Gui.ViewModels"
              x:Class="Dsh.Gui.Views.SettingsPageView"
              x:DataType="vm:MainViewModel"
@@ -183,7 +182,7 @@
                   <ComboBox MinWidth="220" ItemsSource="{Binding Preferences.CloseActions}" SelectedItem="{Binding Preferences.SelectedCloseAction, Mode=TwoWay}" />
                   <TextBlock Text="{Binding Preferences.SelectedCloseAction}" Classes="Mono" VerticalAlignment="Center" />
                 </StackPanel>
-                <TextBlock Text="tray = 最小化到托盘，quit = 直接退出，ask = 每次询问" Classes="Tertiary" />
+                <TextBlock Text="{Binding Preferences.TrayHint}" Classes="Tertiary" TextWrapping="Wrap" />
                 <Button Classes="Primary" HorizontalAlignment="Left" Content="保存"
                         Command="{Binding Preferences.SaveGraphicsCommand}" />
               </StackPanel>

@@ -1,12 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Reflection;
-using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Gui.Services;
-using Dsh.Llm;
 using Dsh.Plugins;
 using Dsh.Runtime;
 
@@ -204,6 +202,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _traySupported = true;
 
     [ObservableProperty]
+    private string _trayHint = "";
+
+    [ObservableProperty]
     private string _sessionsPath = "";
 
     [ObservableProperty]
@@ -242,7 +243,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         GpuAdapter = snapshot.GpuAdapter;
         LoadGpuAdapters(snapshot.GpuAdapter);
         SelectedCloseAction = snapshot.CloseAction;
-        TraySupported = ClosePolicy.TraySupported || !OperatingSystem.IsLinux();
+        TraySupported = ClosePolicy.TraySupported;
+        TrayHint = TraySupported
+            ? "tray = 最小化到托盘，quit = 直接退出，ask = 每次询问（当前桌面已检测到托盘宿主）"
+            : "tray = 最小化到托盘，quit = 直接退出，ask = 每次询问；当前桌面没有托盘宿主，tray 会按 quit 处理（GNOME 可安装 AppIndicator 扩展后再试）";
         SessionsPath = Path.Combine(_home.Root, "sessions");
         ConfigPath = Path.Combine(_home.Root, "settings.yaml");
         LoadHarnessSettings();
@@ -434,7 +438,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         });
         LoadGpuAdapters(GpuAdapter);
         var adapter = GpuAdapter == GpuPreference.AutoAdapter ? "自动" : GpuAdapter;
-        Status = $"图形与关闭行为已保存：显卡 {adapter} · 后端 {GpuPreference.BackendLabel(GpuEnabled ? SelectedGpuBackend : GpuPreference.SoftwareBackend)} · 关闭时 {(SelectedCloseAction switch { GuiSettings.CloseQuit => "退出", GuiSettings.CloseAsk => "询问", _ => "最小化到托盘" })}（重启生效）";
+        var close = SelectedCloseAction switch
+        {
+            GuiSettings.CloseQuit => "退出",
+            GuiSettings.CloseAsk => "询问",
+            _ => TraySupported ? "最小化到托盘" : "最小化到托盘（无托盘宿主，实际按退出处理）",
+        };
+        Status = $"图形与关闭行为已保存：显卡 {adapter} · 后端 {GpuPreference.BackendLabel(GpuEnabled ? SelectedGpuBackend : GpuPreference.SoftwareBackend)} · 关闭时 {close}（重启生效）";
     }
 
     [RelayCommand]
@@ -640,7 +650,7 @@ public sealed record ShortcutRowViewModel(string Keys, string Description);
 /** 显卡下拉的一项: Value 写进 settings.yaml 的 gpu.adapter, Label 给人看。 */
 public sealed record GpuAdapterOption(string Value, string Label);
 
-public sealed partial class PluginRowViewModel(string package, string description, bool enabled) : ObservableObject
+public sealed class PluginRowViewModel(string package, string description, bool enabled) : ObservableObject
 {
     public string Package { get; } = package;
 

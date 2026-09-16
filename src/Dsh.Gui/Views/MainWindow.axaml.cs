@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Dsh.Boot;
 using Dsh.Core;
@@ -22,6 +23,7 @@ public sealed partial class MainWindow : Window
     private CloseActionKind _closeAction = CloseActionKind.Tray;
     private TrayIcon? _tray;
     private bool _forceQuit;
+    private bool _shutdownRequested;
     private ClosePromptDialog? _closePrompt;
 
     /** XAML 编译器要求存在无参构造, 实际启动路径走下面的带参构造。 */
@@ -30,7 +32,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(HarnessApp app, AgentLoopAgent agent) : this()
     {
         _guiSettings = new GuiSettings(app.Home);
-        _closeAction = ClosePolicy.Parse(_guiSettings.Load().CloseAction);
+        _closeAction = ClosePolicy.Effective(ClosePolicy.Parse(_guiSettings.Load().CloseAction));
         ViewModel = new MainViewModel(app, agent);
         DataContext = ViewModel;
         ViewModel.DecisionRequested += ShowDecisionAsync;
@@ -38,6 +40,7 @@ public sealed partial class MainWindow : Window
         ViewModel.FilePicker = PickAsync;
         ViewModel.Preferences.Applied += ApplyAppearance;
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+        Dispatcher.UIThread.UnhandledException += OnDispatcherUnhandledException;
         SetUpTitleBar();
         SetUpTray();
     }
@@ -63,6 +66,13 @@ public sealed partial class MainWindow : Window
                     await AskCloseActionAsync();
                     return;
                 }
+                if (!ClosePolicy.TrayAvailable())
+                {
+                    // 桌面托盘宿主已经退出(或从未就绪), 藏起来就找不回来了。
+                    ViewModel?.SetStatus("托盘不可用，改为直接退出");
+                    Quit();
+                    return;
+                }
             }
             catch (Exception error)
             {
@@ -73,6 +83,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         ViewModel?.PersistWindowBounds(Width, Height, Position.X, Position.Y, WindowState == WindowState.Maximized);
+        _forceQuit = true;
         base.OnClosing(e);
     }
 
@@ -87,6 +98,8 @@ public sealed partial class MainWindow : Window
         }
         _tray?.Dispose();
         base.OnClosed(e);
+        if (_forceQuit)
+            ShutdownApplication();
     }
 
     public void ShowFromTray()
@@ -109,7 +122,7 @@ public sealed partial class MainWindow : Window
 
     private void SetUpTray()
     {
-        if (OperatingSystem.IsLinux() && !ClosePolicy.TraySupported)
+        if (!ClosePolicy.TraySupported)
             return;
         try
         {
@@ -136,11 +149,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /** Windows 用多尺寸 ico; Linux/macOS 的托盘(SNI/NSStatusItem)要 png。 */
     private static WindowIcon? LoadTrayIcon()
     {
+        var asset = OperatingSystem.IsWindows() ? "avares://Dsh.Gui/Assets/icon.ico" : "avares://Dsh.Gui/Assets/icon.png";
         try
         {
-            using var stream = AssetLoader.Open(new Uri("avares://Dsh.Gui/Assets/icon.ico"));
+            using var stream = AssetLoader.Open(new Uri(asset));
             return new WindowIcon(stream);
         }
         catch (Exception)
@@ -153,7 +168,7 @@ public sealed partial class MainWindow : Window
     {
         if (_closePrompt is not null)
             return;
-        _closePrompt = new ClosePromptDialog();
+        _closePrompt = new ClosePromptDialog(ClosePolicy.TraySupported);
         var result = await _closePrompt.ShowDialog<(bool Quit, bool Remember)?>(this);
         _closePrompt = null;
         if (result is not { } choice)
@@ -163,7 +178,7 @@ public sealed partial class MainWindow : Window
             _closeAction = choice.Quit ? CloseActionKind.Quit : CloseActionKind.Tray;
             _guiSettings.Save(_guiSettings.Load() with { CloseAction = ClosePolicy.Wire(_closeAction) });
         }
-        if (choice.Quit)
+        if (choice.Quit || !ClosePolicy.TraySupported)
             Quit();
         else
             HideToTray();
@@ -178,6 +193,18 @@ public sealed partial class MainWindow : Window
     private void Quit()
     {
         _forceQuit = true;
+        ShutdownApplication();
+    }
+
+    /**
+     * 生命周期是 OnExplicitShutdown: 关闭窗口本身不会退出进程, 必须显式 Shutdown。
+     * 只能在窗口关闭之后调用(见 OnClosed), 在 OnClosing 里调会重入关闭流程导致死循环。
+     */
+    private void ShutdownApplication()
+    {
+        if (_shutdownRequested)
+            return;
+        _shutdownRequested = true;
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.Shutdown();
@@ -215,6 +242,27 @@ public sealed partial class MainWindow : Window
     {
         if (Application.Current is { } app && _guiSettings is not null)
             ThemeService.Apply(app, _guiSettings.Load());
+    }
+
+    /**
+     * 托盘只是锦上添花: Avalonia 的 SNI 托盘在 DBus 调用失败时把异常抛到 dispatcher 上,
+     * 不拦住会直接带走整个 GUI(实测 KDE 上 watcher 尚未就绪时进程收到 SIGABRT)。
+     */
+    private void OnDispatcherUnhandledException(object? sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        if (!IsTrayFailure(e.Exception))
+            return;
+        _ = Console.Error.WriteLineAsync($"dsh: tray icon unavailable: {e.Exception.Message}");
+        e.Handled = true;
+    }
+
+    private static bool IsTrayFailure(Exception error)
+    {
+        var trace = error.StackTrace ?? string.Empty;
+        return trace.Contains("DBusTrayIcon", StringComparison.Ordinal)
+            || trace.Contains("Avalonia.FreeDesktop", StringComparison.Ordinal)
+            || trace.Contains("TrayIcon", StringComparison.Ordinal)
+            || error.Source?.Contains("Tmds.DBus", StringComparison.Ordinal) == true;
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)

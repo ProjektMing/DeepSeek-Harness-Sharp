@@ -79,7 +79,8 @@ DeepSeek-Harness-Sharp\bin\Debug\net10.0\DeepSeek-Harness-Sharp.exe gui --sessio
 - 消息操作:助手消息下方有复制、有帮助/没帮助、重新生成(把最后一条用户消息重新入队)。
 - 单实例:同一份 home 只会有一个 GUI,重复启动(双击、快捷方式、`dsh-gui.exe`)只会把已有窗口调到前台,不会开第二个窗口。同一个 home 里同时跑 GUI 与 CLI/TUI 也是允许的,日志会自动共用同一个文件。
 - 显卡选择:设置页「图形与加速」列出本机识别到的显卡(Windows 读显示类驱动注册表,Linux 读 `/sys/class/drm`),默认「自动」。Windows 上通过 Avalonia 的显卡选择回调按名字匹配;Linux 上用 PRIME 选择器(`DRI_PRIME` / `__NV_PRIME_RENDER_OFFLOAD`)表达偏好,部分驱动或容器里可能不生效。保存后重启生效;想确认实际用了哪张卡,Windows 上可在任务管理器或 `nvidia-smi` 里看 `dsh-gui.exe`。
-- 平台说明:自绘标题栏、显卡选择与托盘在 Windows 上支持最完整;无 StatusNotifier 通知区域的 Linux 桌面会禁用托盘并把关闭行为按普通窗口处理。在 Linux(含 WSL) 上后台验证界面可用 `bash scripts/verify-gui-linux.sh`(Xvfb 虚拟显示 + 截图,不打扰当前桌面)。
+- 关闭行为:默认「最小化到托盘」,设置页「图形与加速」可改成直接退出或每次询问。Windows 用通知区域图标;Linux 走 StatusNotifier,KDE 自带托盘宿主,GNOME 需要 AppIndicator 扩展(Ubuntu 桌面默认带)。启动时若探测不到托盘宿主(例如 GNOME 没装扩展),会按「直接退出」处理,避免窗口藏进看不见的地方。
+- 平台说明:自绘标题栏、显卡选择与托盘在 Windows 上支持最完整。在 Linux(含 WSL) 上后台验证界面可用 `bash scripts/verify-gui-linux.sh`(Xvfb 虚拟显示 + 截图,不打扰当前桌面);托盘行为可用同样方式起 plasmashell / gnome-shell 后验证(见 AGENTS.md 规则 55)。
 
 ## 发布形态
 

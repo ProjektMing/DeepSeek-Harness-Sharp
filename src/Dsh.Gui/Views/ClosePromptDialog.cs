@@ -6,12 +6,12 @@ using Avalonia.Media;
 
 namespace Dsh.Gui.Views;
 
-/** 关闭主窗口时询问最小化到托盘还是直接退出; null 表示用户没有做出选择。 */
+/** 关闭主窗口时询问最小化到托盘还是直接退出; null 表示用户没有做出选择。没有托盘宿主时只给「直接退出」。 */
 public sealed class ClosePromptDialog : Window
 {
     private readonly CheckBox _remember = new() { Content = "记住我的选择（可在设置中修改）" };
 
-    public ClosePromptDialog()
+    public ClosePromptDialog(bool traySupported = true)
     {
         Title = "关闭 DeepSeek Harness";
         Width = 380;
@@ -21,10 +21,21 @@ public sealed class ClosePromptDialog : Window
         ShowInTaskbar = false;
         ApplyTheme();
 
-        var tray = new Button { Content = "最小化到托盘", MinWidth = 120, IsDefault = true, Classes = { "Primary" } };
-        tray.Click += (_, _) => Complete(false);
-        var quit = new Button { Content = "直接退出", MinWidth = 120, Classes = { "Ghost" } };
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+        if (traySupported)
+        {
+            var tray = new Button { Content = "最小化到托盘", MinWidth = 120, IsDefault = true, Classes = { "Primary" } };
+            tray.Click += (_, _) => Complete(false);
+            buttons.Children.Add(tray);
+        }
+        var quit = new Button { Content = "直接退出", MinWidth = 120, IsDefault = !traySupported, Classes = { "Ghost" } };
         quit.Click += (_, _) => Complete(true);
+        buttons.Children.Add(quit);
 
         Content = new StackPanel
         {
@@ -32,23 +43,15 @@ public sealed class ClosePromptDialog : Window
             Spacing = 14,
             Children =
             {
-                new TextBlock { Text = "最小化到托盘还是直接退出？", TextWrapping = TextWrapping.Wrap },
-                _remember,
-                new StackPanel
+                new TextBlock
                 {
-                    Orientation = Orientation.Horizontal,
-                    HorizontalAlignment = HorizontalAlignment.Right,
-                    Spacing = 8,
-                    Children = { tray, quit },
+                    Text = traySupported ? "最小化到托盘还是直接退出？" : "当前桌面没有托盘宿主（GNOME 需要 AppIndicator 扩展），关闭即退出。",
+                    TextWrapping = TextWrapping.Wrap,
                 },
+                _remember,
+                buttons,
             },
         };
-    }
-
-    public static async Task<(bool Quit, bool Remember)?> ShowAsync(Window owner)
-    {
-        var dialog = new ClosePromptDialog();
-        return await dialog.ShowDialog<(bool Quit, bool Remember)?>(owner);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
