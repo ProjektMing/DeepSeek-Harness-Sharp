@@ -5,7 +5,7 @@ namespace Dsh.Memory;
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
-[JsonSerializable(typeof(MemoryWriteResult))]
+[JsonSerializable(typeof(MemorySaveResult))]
 internal sealed partial class DshMemoryJsonContext : JsonSerializerContext
 {
 }

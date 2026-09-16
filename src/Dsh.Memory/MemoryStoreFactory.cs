@@ -3,10 +3,11 @@ using Dsh.Core;
 
 namespace Dsh.Memory;
 
-/** 按 settings.yaml 的 memory.backend 选后端:缺省 file,`mongo` 时用 Mongo 文档存整段 markdown。 */
+/** 按 settings.yaml 的 memory.backend 选后端:缺省 file(项目根/.dsh-memory.md,worktree 归并到主工作树),`mongo` 时用 Mongo 文档。 */
 public static class MemoryStoreFactory
 {
     public const string MongoBackend = "mongo";
+    public const string DefaultFileName = ".dsh-memory.md";
 
     public static IMemoryStore Create(MemorySettings? settings, string cwd)
     {
@@ -20,7 +21,7 @@ public static class MemoryStoreFactory
 
         var configured = settings?.File;
         var path = string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(cwd, ".dsh-memory.md")
+            ? Path.Combine(ProjectRoot.Resolve(cwd), DefaultFileName)
             : Path.GetFullPath(configured, cwd);
         return new FileMemoryStore(path);
     }
