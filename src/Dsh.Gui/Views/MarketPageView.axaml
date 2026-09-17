@@ -6,16 +6,66 @@
              x:CompileBindings="True"
              FontFamily="{DynamicResource Font.Ui}">
 
-  <Grid RowDefinitions="Auto,*" Background="{DynamicResource Brush.Bg.Chat}">
+  <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource Brush.Bg.Chat}">
+
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="20,14,20,10">
-      <TextBlock Text="插件市场" Classes="Title" VerticalAlignment="Center" />
-      <Button Grid.Column="1" Classes="Ghost" Command="{Binding RefreshPluginsCommand}" Content="刷新" />
+      <StackPanel Spacing="2">
+        <TextBlock Text="插件市场" Classes="Title" />
+        <TextBlock Text="{Binding MarketStatus}" Classes="Tertiary" TextWrapping="Wrap" />
+      </StackPanel>
+      <Button Grid.Column="1" Classes="Ghost" VerticalAlignment="Center" Content="刷新"
+              Command="{Binding Preferences.RefreshPluginsCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
     </Grid>
-    <ScrollViewer Grid.Row="1" Margin="20,0,20,16">
-      <TextBlock Text="{Binding PluginText}" FontFamily="{DynamicResource Font.Mono}"
-                 FontSize="{DynamicResource FontSize.List}"
-                 Foreground="{DynamicResource Brush.Text.Secondary}"
-                 TextWrapping="Wrap" />
+
+    <ScrollViewer Grid.Row="1" Classes="Slim" Padding="20,0,20,8">
+      <StackPanel Spacing="12">
+
+        <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+          <StackPanel Spacing="8">
+            <TextBlock Text="安装插件" Classes="Secondary" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Text="{Binding Preferences.PluginInput}" Watermark="包名或本地路径，例如 ./plugins/my-plugin" />
+              <Button Grid.Column="1" Classes="Primary" Margin="8,0,0,0" Content="安装"
+                      Command="{Binding Preferences.AddPluginCommand}" IsEnabled="{Binding !Preferences.IsWorking}" />
+            </Grid>
+            <TextBlock Text="从本地路径或包名安装；启用/禁用立即写入 settings.yaml。" Classes="Tertiary" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource Brush.Bg.Card}" CornerRadius="{DynamicResource CornerRadius.Card}" Padding="14">
+          <StackPanel Spacing="8">
+            <TextBlock Text="已安装插件" Classes="Secondary" />
+            <ItemsControl ItemsSource="{Binding Preferences.Plugins}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PluginRowViewModel">
+                  <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4">
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="{Binding Package}" Classes="Mono" />
+                      <TextBlock Text="{Binding Description}" Classes="Tertiary" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Margin="8,0" Padding="8,2" CornerRadius="999"
+                            Background="{DynamicResource Brush.Accent.Soft}" VerticalAlignment="Center">
+                      <Panel>
+                        <TextBlock Text="已启用" Classes="Tertiary" IsVisible="{Binding Enabled}" />
+                        <TextBlock Text="已禁用" Classes="Tertiary" IsVisible="{Binding !Enabled}" />
+                      </Panel>
+                    </Border>
+                    <Button Grid.Column="2" Classes="Ghost" VerticalAlignment="Center"
+                            Content="{Binding ActionLabel}"
+                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Preferences.PluginActionCommand}"
+                            CommandParameter="{Binding WireAction}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="启用/禁用会立即写入 settings.yaml；插件参数在「设置 → 插件与 MCP」中查看。" Classes="Tertiary" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+      </StackPanel>
     </ScrollViewer>
+
+    <TextBlock Grid.Row="2" Text="{Binding Preferences.Status}" Classes="Tertiary"
+               Margin="20,0,20,10" TextTrimming="CharacterEllipsis" />
   </Grid>
 </UserControl>

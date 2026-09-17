@@ -31,6 +31,12 @@ public sealed partial class SessionNodeViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
+    [ObservableProperty]
+    private bool _isRenaming;
+
+    [ObservableProperty]
+    private string _renameDraft = "";
+
     public AgentLoopAgent? Agent { get; set; }
 
     public void Refresh(AgentLoopAgent? liveAgent, string title, string modelLabel)

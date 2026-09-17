@@ -1,74 +1,169 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Dsh.Gui.ViewModels"
+             xmlns:views="using:Dsh.Gui.Views"
              x:Class="Dsh.Gui.Views.ChatView"
              x:DataType="vm:MainViewModel"
              x:CompileBindings="True"
              FontFamily="{DynamicResource Font.Ui}">
 
-
-
   <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Background="{DynamicResource Brush.Bg.Chat}">
 
-    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="20,14,20,0">
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="20,14,20,0">
       <StackPanel Spacing="2">
         <TextBlock Text="{Binding SessionTitle}" Classes="Title" />
         <TextBlock Text="{Binding SessionSubtitle}" Classes="Tertiary" />
       </StackPanel>
-      <Border Grid.Column="1" VerticalAlignment="Center" Padding="8,3" CornerRadius="999"
-              Background="{DynamicResource Brush.Accent.Soft}">
-        <TextBlock Text="标准模式" FontSize="{DynamicResource FontSize.Status}"
-                   Foreground="{DynamicResource Brush.Text.Secondary}" />
-      </Border>
+
+      <Button Grid.Column="1" Classes="Chip" VerticalAlignment="Center" ToolTip.Tip="会话模式">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Shield}" />
+          <TextBlock Text="{Binding ModeLabel}" />
+          <Path Classes="Icon" Width="12" Height="12" Data="{StaticResource Icon.ChevronDown}" />
+        </StackPanel>
+        <Button.Flyout>
+          <MenuFlyout Placement="BottomEdgeAlignedRight">
+            <MenuItem Header="标准模式（每次审批弹窗）" Command="{Binding SetModeCommand}" CommandParameter="standard" />
+            <MenuItem Header="计划模式（/plan）" Command="{Binding SetModeCommand}" CommandParameter="plan" />
+            <MenuItem Header="只读模式（自动拒绝需要审批的操作）" Command="{Binding SetModeCommand}" CommandParameter="readonly" />
+            <MenuItem Header="Full access（自动放行，黑名单仍生效）" Command="{Binding SetModeCommand}" CommandParameter="full" />
+            <MenuItem Header="创造模式（尚未实现）" IsEnabled="False" />
+          </MenuFlyout>
+        </Button.Flyout>
+      </Button>
+
+      <Button Grid.Column="2" Classes="Ghost" Margin="8,0,0,0" VerticalAlignment="Center" ToolTip.Tip="会话日志">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Download}" />
+          <TextBlock Text="Session log" />
+        </StackPanel>
+        <Button.Flyout>
+          <MenuFlyout Placement="BottomEdgeAlignedRight">
+            <MenuItem Header="导出会话日志（JSONL）" Command="{Binding ExportSessionLogCommand}" />
+            <MenuItem Header="打开会话目录" Command="{Binding OpenSessionFolderCommand}" />
+          </MenuFlyout>
+        </Button.Flyout>
+      </Button>
     </Grid>
 
-    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="18,10,18,0" Spacing="16">
-      <Button Classes="Tab" Classes.selected="{Binding !IsTraceTab}" Command="{Binding ShowConversationCommand}">
-        <TextBlock Text="对话" />
-      </Button>
-      <Button Classes="Tab" Classes.selected="{Binding IsTraceTab}" Command="{Binding ShowTraceCommand}">
-        <TextBlock Text="轨迹" />
-      </Button>
-    </StackPanel>
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="18,10,18,0">
+      <StackPanel Orientation="Horizontal" Spacing="16">
+        <Button Classes="Tab" Classes.selected="{Binding !IsTraceTab}" Command="{Binding ShowConversationCommand}">
+          <TextBlock Text="对话" />
+        </Button>
+        <Button Classes="Tab" Classes.selected="{Binding IsTraceTab}" Command="{Binding ShowTraceCommand}">
+          <TextBlock Text="轨迹" />
+        </Button>
+      </StackPanel>
+      <ItemsControl Grid.Column="2" ItemsSource="{Binding TraceFilters}" IsVisible="{Binding IsTraceTab}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="4" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:TraceFilterViewModel">
+            <Button Classes="Chip" Classes.selected="{Binding IsSelected}"
+                    Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SelectTraceFilterCommand}"
+                    CommandParameter="{Binding}">
+              <TextBlock Text="{Binding Label}" />
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Grid>
 
     <Border Grid.Row="1" Height="1" VerticalAlignment="Bottom" Background="{DynamicResource Brush.Border.Subtle}" />
 
-    <ListBox Grid.Row="2" Name="MessageList" Classes="MessageList"
-             ItemsSource="{Binding Messages}"
-             IsVisible="{Binding !IsTraceTab}"
-             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-             Padding="20,8">
+    <ListBox Grid.Row="2" Name="MessageList" Classes="MessageList" IsVisible="{Binding !IsTraceTab}"
+             ItemsSource="{Binding Messages}">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="vm:MessageViewModel">
-          <Border Classes="Msg" Classes.user="{Binding IsUser}" HorizontalAlignment="{Binding Align}">
-            <StackPanel Spacing="3">
-              <TextBlock Text="{Binding Role}" Classes="Tertiary" IsVisible="{Binding HasRole}" />
-              <TextBlock Text="{Binding Text}" Classes="Body" />
-            </StackPanel>
-          </Border>
-        </DataTemplate>
+            <Border Classes="Msg" Classes.user="{Binding IsUser}" HorizontalAlignment="{Binding Align}">
+              <StackPanel Spacing="3">
+                <TextBlock Text="{Binding Role}" Classes="Tertiary" IsVisible="{Binding HasRole}" />
+
+                <TextBlock Text="{Binding Preview}" Classes="Secondary" IsVisible="{Binding ShowPreview}" />
+                <Button Classes="Ghost" Padding="2,0" HorizontalAlignment="Left"
+                        IsVisible="{Binding IsFoldable}"
+                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).ToggleMessageFoldCommand}"
+                        CommandParameter="{Binding}">
+                  <TextBlock Text="{Binding FoldLabel}" Classes="Tertiary" />
+                </Button>
+
+                <views:MarkdownView Text="{Binding Text}" IsVisible="{Binding ShowMarkdown}" />
+                <TextBlock Text="{Binding Text}" Classes="Body" IsVisible="{Binding ShowPlainBody}" />
+                <TextBlock Text="{Binding Detail}" Classes="Body" IsVisible="{Binding ShowDetail}"
+                           FontFamily="{DynamicResource Font.Mono}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding ShowActions}">
+                  <Button Classes="Icon" Width="26" Height="26" ToolTip.Tip="复制"
+                          Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).CopyMessageCommand}"
+                          CommandParameter="{Binding}">
+                    <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Copy}" />
+                  </Button>
+                  <Button Classes="Icon" Width="26" Height="26" ToolTip.Tip="有帮助"
+                          Classes.selected="{Binding IsLiked}"
+                          Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).LikeMessageCommand}"
+                          CommandParameter="{Binding}">
+                    <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.ThumbUp}" />
+                  </Button>
+                  <Button Classes="Icon" Width="26" Height="26" ToolTip.Tip="没帮助"
+                          Classes.selected="{Binding IsDisliked}"
+                          Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).DislikeMessageCommand}"
+                          CommandParameter="{Binding}">
+                    <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.ThumbDown}" />
+                  </Button>
+                  <Button Classes="Icon" Width="26" Height="26" ToolTip.Tip="重新生成"
+                          Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).RegenerateMessageCommand}"
+                          CommandParameter="{Binding}">
+                    <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Refresh}" />
+                  </Button>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
 
-    <ListBox Grid.Row="2" Classes="MessageList"
-             ItemsSource="{Binding TraceItems}"
-             IsVisible="{Binding IsTraceTab}"
-             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-             Padding="20,8">
+    <ListBox Grid.Row="2" Name="TraceList" Classes="MessageList" IsVisible="{Binding IsTraceTab}"
+             ItemsSource="{Binding TraceView}">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
       <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="vm:TraceItemViewModel">
-          <Button Classes="TraceItem" Classes.selected="{Binding IsSelected}"
-                  Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SelectTraceItemCommand}"
-                  CommandParameter="{Binding}">
-            <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
-              <TextBlock Text="{Binding Time}" Classes="Tertiary" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1" Text="{Binding Title}" Classes="Secondary" Margin="10,0,0,0"
-                         TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-              <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding Detail}" Classes="Tertiary"
-                         Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
-            </Grid>
-          </Button>
-        </DataTemplate>
+          <DataTemplate x:DataType="vm:TraceItemViewModel">
+            <Border Classes="Msg" Background="Transparent">
+              <StackPanel Spacing="2">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                  <TextBlock Text="{Binding Time}" Classes="Tertiary" VerticalAlignment="Center" />
+                  <Border Grid.Column="1" Margin="8,0" Padding="6,1" CornerRadius="999"
+                          Background="{DynamicResource Brush.Accent.Soft}" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding KindLabel}" Classes="Tertiary" />
+                  </Border>
+                  <Button Grid.Column="2" Classes="TraceItem" Padding="6,2"
+                          Classes.selected="{Binding IsSelected}"
+                          Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SelectTraceItemCommand}"
+                          CommandParameter="{Binding}">
+                    <TextBlock Text="{Binding Title}" Classes="Secondary" TextTrimming="CharacterEllipsis" />
+                  </Button>
+                  <Button Grid.Column="3" Classes="Icon" Width="22" Height="22" IsVisible="{Binding HasDetail}"
+                          Command="{Binding ToggleExpandCommand}">
+                    <TextBlock Text="{Binding ExpandLabel}" Classes="Tertiary" />
+                  </Button>
+                </Grid>
+                <TextBlock Text="{Binding Detail}" Classes="Tertiary" Margin="0,2,0,0" TextWrapping="Wrap"
+                           IsVisible="{Binding IsExpanded}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
 
@@ -77,22 +172,102 @@
             BorderBrush="{DynamicResource Brush.Border.Subtle}"
             BorderThickness="1"
             CornerRadius="{DynamicResource CornerRadius.Card}">
-      <Grid RowDefinitions="Auto,Auto">
-        <TextBox Name="InputBox" Classes="Bare" AcceptsReturn="True" TextWrapping="Wrap"
+      <Grid RowDefinitions="Auto,Auto,Auto">
+        <Border Grid.Row="0" Margin="0,0,0,6" MaxHeight="240" IsVisible="{Binding IsSuggestionOpen}"
+                Background="{DynamicResource Brush.Bg.Inset}" CornerRadius="8">
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Suggestions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SuggestionViewModel">
+                  <Button Classes="Ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                          Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).ConfirmSuggestionCommand}">
+                    <Grid ColumnDefinitions="Auto,*">
+                      <TextBlock Text="{Binding Label}" Classes="Mono" />
+                      <TextBlock Grid.Column="1" Text="{Binding Description}" Classes="Tertiary"
+                                 Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
+
+        <TextBox Grid.Row="1" Name="InputBox" Classes="Bare" AcceptsReturn="True" TextWrapping="Wrap"
                  MinHeight="40" MaxHeight="180"
                  Watermark="{Binding Composer.Placeholder}"
                  Text="{Binding Composer.Input}" />
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
-          <TextBlock Grid.Column="1" Text="Enter 发送 · Shift+Enter 换行" Classes="Tertiary"
-                     VerticalAlignment="Center" Margin="8,0,0,0" />
-          <Button Grid.Column="2" Classes="Send" Command="{Binding SubmitCommand}"
+
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" Margin="0,8,0,0">
+          <Button Classes="Chip" ToolTip.Tip="附件与引用">
+            <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Attach}" />
+            <Button.Flyout>
+              <MenuFlyout Placement="TopEdgeAlignedLeft">
+                <MenuItem Header="添加文件…" Command="{Binding AttachFileCommand}" />
+                <MenuItem Header="添加文件夹…" Command="{Binding AttachFolderCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+          <Button Grid.Column="1" Classes="Chip" Margin="6,0,0,0" ToolTip.Tip="引用历史会话">
+            <TextBlock Text="@ 会话" />
+            <Button.Flyout>
+              <Flyout Placement="Top">
+                <ListBox ItemsSource="{Binding RecentSessions}" MaxHeight="260" MinWidth="260">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SessionNodeViewModel">
+                      <Button Classes="SessionItem" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                              Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).InsertMentionCommand}"
+                              CommandParameter="{Binding SessionId.Value}">
+                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                      </Button>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <Button Grid.Column="2" Classes="Chip" Margin="6,0,0,0" ToolTip.Tip="权限">
+            <TextBlock Text="{Binding Composer.PermissionLabel}" />
+            <Button.Flyout>
+              <MenuFlyout Placement="TopEdgeAlignedLeft">
+                <MenuItem Header="Ask（每次审批）" Command="{Binding SetPermissionCommand}" CommandParameter="ask" />
+                <MenuItem Header="Full access（自动放行）" Command="{Binding SetPermissionCommand}" CommandParameter="full" />
+                <MenuItem Header="Read only（自动拒绝）" Command="{Binding SetPermissionCommand}" CommandParameter="readonly" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+          <Button Grid.Column="3" Classes="Chip" Margin="6,0,0,0" ToolTip.Tip="模型">
+            <TextBlock Text="{Binding Composer.ModelLabel}" TextTrimming="CharacterEllipsis" MaxWidth="220" />
+            <Button.Flyout>
+              <Flyout Placement="Top">
+                <StackPanel Width="300" Spacing="6">
+                  <ListBox ItemsSource="{Binding Preferences.Models}" MaxHeight="220"
+                           SelectedItem="{Binding Preferences.SelectedModel}" />
+                  <Button Classes="Primary" Content="切换模型" Command="{Binding Preferences.SwitchModelCommand}" />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <Button Grid.Column="4" Classes="Chip" Margin="6,0,0,0" ToolTip.Tip="维护动作">
+            <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Refresh}" />
+            <Button.Flyout>
+              <MenuFlyout Placement="TopEdgeAlignedLeft">
+                <MenuItem Header="压缩上下文（/compact）" Command="{Binding CompactCommand}" />
+                <MenuItem Header="重载 MCP（/mcp）" Command="{Binding ReloadMcpCommand}" />
+                <MenuItem Header="刷新模型列表" Command="{Binding RefreshModelsCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+          <TextBlock Grid.Column="5" Text="Enter 发送 · Shift+Enter 换行 · / 命令 · @ 引用" Classes="Tertiary"
+                     VerticalAlignment="Center" Margin="10,0,0,0" />
+          <Button Grid.Column="6" Classes="Send" Command="{Binding SubmitCommand}"
                   IsVisible="{Binding !IsBusy}"
                   IsEnabled="{Binding Composer.CanSubmit}"
                   ToolTip.Tip="发送 (Enter)">
             <Path Classes="Icon" Width="16" Height="16" Stroke="{DynamicResource Brush.Text.OnAccent}"
                   Data="{StaticResource Icon.Send}" />
           </Button>
-          <Button Grid.Column="2" Classes="Send" Command="{Binding CancelTaskCommand}"
+          <Button Grid.Column="6" Classes="Send" Command="{Binding CancelTaskCommand}"
                   IsVisible="{Binding IsBusy}"
                   ToolTip.Tip="停止">
             <Path Classes="Icon" Width="14" Height="14" Stroke="{DynamicResource Brush.Text.OnAccent}"
@@ -103,9 +278,13 @@
     </Border>
 
     <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="22,0,22,10" Spacing="8">
-      <TextBlock Text="{Binding StatusText}" Classes="Tertiary" />
-      <TextBlock Text="·" Classes="Tertiary" />
-      <TextBlock Text="{Binding SessionSubtitle}" Classes="Tertiary" />
+      <TextBlock Text="{Binding StatusText}" Classes="Tertiary" VerticalAlignment="Center" />
+      <TextBlock Text="{Binding TokenStats.Rounds}" Classes="Tertiary" />
+      <TextBlock Text="{Binding TokenStats.FirstToken}" Classes="Tertiary" />
+      <TextBlock Text="{Binding TokenStats.TokensPerSecond}" Classes="Tertiary" />
+      <TextBlock Text="{Binding TokenStats.Cache}" Classes="Tertiary" />
+      <TextBlock Text="{Binding TokenStats.Totals}" Classes="Tertiary" />
+      <TextBlock Text="{Binding TokenStats.Latency}" Classes="Tertiary" />
     </StackPanel>
   </Grid>
 </UserControl>

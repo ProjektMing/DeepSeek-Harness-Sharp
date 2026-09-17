@@ -1,4 +1,8 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,6 +14,7 @@ using Dsh.Llm;
 using Dsh.Runtime;
 using Dsh.Runtime.Events;
 using LlmTextBlock = Dsh.Llm.TextBlock;
+using PersistencePlugin = Dsh.Persistence.Plugin;
 
 namespace Dsh.Gui.ViewModels;
 
@@ -26,23 +31,36 @@ public enum ChatTab
     Trace,
 }
 
-/** 主窗口状态: 会话目录、会话流、轨迹、输入胶囊与页面切换。 */
+public enum SessionMode
+{
+    Standard,
+    Plan,
+    ReadOnly,
+    FullAccess,
+    Creative,
+}
+
+/** 主窗口状态: 会话目录、会话流、轨迹、输入胶囊、页面切换与统一决策入口。 */
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     public const int TracePreviewChars = 160;
+    private const string PersistenceServiceName = "sessionPersistence";
 
     private readonly Context _ctx;
     private readonly AgentRegistry _agents;
     private readonly SettingsFacade _settings;
     private readonly SessionCatalog _catalog;
+    private readonly CommandBridge _bridge;
     private readonly DispatcherBridge<SessionEvent> _events;
     private readonly List<Func<bool>> _unsubscribers = [];
+    private readonly List<MessageViewModel> _lastUserMessages = [];
 
     private AgentLoopAgent _agent;
     private long _renderedSeq;
     private MessageViewModel? _openAssistant;
     private MessageViewModel? _openReasoning;
     private bool _disposed;
+    private bool _updatingSuggestions;
 
     public MainViewModel(HarnessApp app, AgentLoopAgent agent)
     {
@@ -52,12 +70,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _agents = _ctx.Get<AgentRegistry>(AgentRegistry.ServiceName)!;
         _settings = new SettingsFacade(_ctx, app.Home);
         _catalog = new SessionCatalog(_ctx);
+        _bridge = new CommandBridge(_ctx);
+        Gui = new GuiSettings(app.Home);
         _events = new DispatcherBridge<SessionEvent>(ApplyEvents);
+        var snapshot = Gui.Load();
+        _workspaceView = snapshot.WorkspaceView;
+        _sortMode = snapshot.SortSessions;
+        _onlyWithSessions = snapshot.ShowOnlyWithSessions;
+        _isSidebarVisible = snapshot.SidebarVisible;
+        Preferences = new SettingsViewModel(_ctx, app.Home, () => _agent, _bridge, Gui, _settings);
+        Composer.PropertyChanged += OnComposerPropertyChanged;
         _unsubscribers.Add(_ctx.On<SessionEventNotification>(notification => OnSessionEvent(notification)));
         _unsubscribers.Add(_ctx.OnWaterfall<ApprovalRequestNotification>(
             (notification, next) => OnApprovalRequest(notification, next),
             new EventOptions { Global = true }));
+        _unsubscribers.Add(_ctx.OnWaterfall<UserQuestionsRequestNotification>(
+            (notification, next) => OnUserQuestionRequest(notification, next),
+            new EventOptions { Global = true }));
         _settings.Changed += OnSettingsChanged;
+        RefreshTraceFilters();
         RefreshSessions();
         ShowAgent(agent);
     }
@@ -66,13 +97,31 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public Context Context => _ctx;
 
+    public GuiSettings Gui { get; }
+
+    public SettingsViewModel Preferences { get; }
+
     public ObservableCollection<WorkspaceGroupViewModel> Workspaces { get; } = [];
+
+    public ObservableCollection<WorkspaceNodeViewModel> FileSystemNodes { get; } = [];
 
     public ObservableCollection<MessageViewModel> Messages { get; } = [];
 
     public ObservableCollection<TraceItemViewModel> TraceItems { get; } = [];
 
+    /** 按类型过滤后的轨迹列表, 视图绑定这一份。 */
+    public ObservableCollection<TraceItemViewModel> TraceView { get; } = [];
+
+    public ObservableCollection<TraceFilterViewModel> TraceFilters { get; } = [];
+
+    public ObservableCollection<SuggestionViewModel> Suggestions { get; } = [];
+
+    /** 输入胶囊「引用会话」列表。 */
+    public ObservableCollection<SessionNodeViewModel> RecentSessions { get; } = [];
+
     public ComposerViewModel Composer { get; } = new();
+
+    public TokenStatsViewModel TokenStats { get; } = new();
 
     public SettingsFacade Settings => _settings;
 
@@ -84,11 +133,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /** 会话流内容发生变化, 视图据此保持贴底滚动。 */
     public event Action? MessagesChanged;
 
-    /** 当前会话切换时触发, 供视图把依赖项(如设置面板)重新指向新 agent。 */
+    /** 当前会话切换时触发, 供视图把依赖项重新指向新 agent。 */
     public event Action<AgentLoopAgent>? AgentChanged;
 
-    /** 审批弹窗由视图实现, ViewModel 只负责把请求转达出去。 */
-    public event Func<ApprovalRequest, Task<ApprovalOutcome>>? ApprovalRequested;
+    /** 统一「需要你决定」窗口由视图实现: 审批与 ask_user_question 都走这里。 */
+    public event Func<DecisionViewModel, Task<object?>>? DecisionRequested;
+
+    /** 视图负责把文本写进剪贴板。 */
+    public event Action<string>? CopyRequested;
 
     [ObservableProperty]
     private SessionNodeViewModel? _selectedSession;
@@ -112,10 +164,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private ChatTab _tab = ChatTab.Conversation;
 
     [ObservableProperty]
-    private bool _isSidebarVisible = true;
+    private bool _isSidebarVisible;
 
     [ObservableProperty]
-    private string _pluginText = "";
+    private string _workspaceView;
+
+    [ObservableProperty]
+    private string _sortMode;
+
+    [ObservableProperty]
+    private bool _onlyWithSessions;
+
+    [ObservableProperty]
+    private string _searchText = "";
+
+    [ObservableProperty]
+    private SessionMode _mode = SessionMode.Standard;
 
     [ObservableProperty]
     private bool _isChatPage = true;
@@ -129,6 +193,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isTraceTab;
 
+    [ObservableProperty]
+    private bool _isSuggestionOpen;
+
+    [ObservableProperty]
+    private int _suggestionIndex;
+
+    [ObservableProperty]
+    private string _marketStatus = "";
+
+    public bool IsSolutionView => WorkspaceView == GuiSettings.ViewSolution;
+
+    public bool IsFileSystemView => WorkspaceView == GuiSettings.ViewFilesystem;
+
+    public string WorkspaceViewLabel => IsFileSystemView ? "文件系统视图" : "解决方案视图";
+
+    public string ModeLabel => Mode switch
+    {
+        SessionMode.Plan => "计划模式",
+        SessionMode.ReadOnly => "只读模式",
+        SessionMode.FullAccess => "Full access",
+        SessionMode.Creative => "创造模式",
+        _ => "标准模式",
+    };
+
+    public IReadOnlyList<SettingsNavItemViewModel> SettingsSections => Preferences.Sections;
+
     partial void OnIsBusyChanged(bool value) => Composer.IsBusy = value;
 
     partial void OnPageChanged(AppPage value)
@@ -139,6 +229,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     partial void OnTabChanged(ChatTab value) => IsTraceTab = value == ChatTab.Trace;
+
+    partial void OnWorkspaceViewChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsSolutionView));
+        OnPropertyChanged(nameof(IsFileSystemView));
+        OnPropertyChanged(nameof(WorkspaceViewLabel));
+        if (!_disposed)
+            Preferences.ApplyWorkspaceView(value);
+    }
+
+    partial void OnSearchTextChanged(string value) => RefreshSessions();
+
+    partial void OnOnlyWithSessionsChanged(bool value)
+    {
+        if (_disposed)
+            return;
+        Gui.Save(Gui.Load() with { ShowOnlyWithSessions = value });
+        RefreshSessions();
+    }
+
+    partial void OnModeChanged(SessionMode value) => OnPropertyChanged(nameof(ModeLabel));
 
     partial void OnSelectedSessionChanged(SessionNodeViewModel? value)
     {
@@ -157,26 +268,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         foreach (var node in AllSessions().ToList())
             node.IsSelected = false;
         Workspaces.Clear();
-        foreach (var group in GroupByWorkspace(_catalog.Load()))
+        FileSystemNodes.Clear();
+        var nodes = FilteredCatalog();
+        foreach (var group in GroupByWorkspace(nodes))
             Workspaces.Add(group);
+        foreach (var node in BuildFileTree(nodes))
+            FileSystemNodes.Add(node);
+        RecentSessions.Clear();
+        foreach (var node in Sort(nodes).Take(20))
+            RecentSessions.Add(node);
         SelectedSession = FindSession(_agent.Id);
     }
 
     [RelayCommand]
-    private async Task RefreshPluginsAsync() => PluginText = await _settings.RunCommandAsync(_agent, "/plugins");
-
-    [RelayCommand]
-    private async Task NewSessionAsync()
-    {
-        var handle = await _agents.Create(new CreateAgentOptions(
-            SessionId.Create($"session-{Guid.NewGuid()}"),
-            _agent.Session.Header.Cwd ?? Environment.CurrentDirectory,
-            CurrentOptions()));
-        var created = (AgentLoopAgent)handle.Agent;
-        await created.WhenIdle();
-        RefreshSessions();
-        ShowAgent(created);
-    }
+    private void NewSession() => _ = NewSessionAsync();
 
     [RelayCommand]
     private async Task SubmitAsync()
@@ -185,13 +290,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (text.Length == 0)
             return;
         Composer.Input = "";
+        CloseSuggestions();
         if (text.StartsWith('/'))
         {
             await RunCommandAsync(text);
             return;
         }
         // 用户消息只由会话事件渲染: 本地回显会在恢复会话/重放事件时变成第二条。
-        _agent.Followup(MessageFactory.CreateUserText(text));
+        _agent.Followup(MessageFactory.CreateUserText(ExpandMentions(text)));
     }
 
     [RelayCommand]
@@ -207,7 +313,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ShowMarket()
     {
         Page = AppPage.Market;
-        _ = RefreshPluginsAsync();
+        MarketStatus = "";
+        Preferences.RefreshPluginsCommand.Execute(null);
     }
 
     [RelayCommand]
@@ -217,13 +324,115 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ShowTrace() => Tab = ChatTab.Trace;
 
     [RelayCommand]
-    private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
+    private void ToggleSidebar()
+    {
+        IsSidebarVisible = !IsSidebarVisible;
+        Gui.Save(Gui.Load() with { SidebarVisible = IsSidebarVisible });
+    }
 
     [RelayCommand]
     private void OpenSession(SessionNodeViewModel? node)
     {
         if (node is not null)
             SelectedSession = node;
+    }
+
+    [RelayCommand]
+    private void BeginRename(SessionNodeViewModel? node)
+    {
+        if (node is null)
+            return;
+        node.RenameDraft = node.Title;
+        node.IsRenaming = true;
+    }
+
+    [RelayCommand]
+    private async Task CommitRenameAsync(SessionNodeViewModel? node)
+    {
+        if (node is null || !node.IsRenaming)
+            return;
+        node.IsRenaming = false;
+        var title = node.RenameDraft.Trim();
+        if (title.Length == 0 || title == node.Title)
+            return;
+        StatusText = await _bridge.RunAsync(_agent, $"/rename {node.SessionId.Value} {title}");
+        RefreshSessions();
+    }
+
+    [RelayCommand]
+    private void CancelRename(SessionNodeViewModel? node)
+    {
+        if (node is not null)
+            node.IsRenaming = false;
+    }
+
+    [RelayCommand]
+    private async Task DeleteSessionAsync(SessionNodeViewModel? node)
+    {
+        if (node is null)
+            return;
+        if (ReferenceEquals(node.Agent, _agent) || node.SessionId == _agent.Id)
+        {
+            StatusText = "不能删除当前正在使用的会话";
+            return;
+        }
+        StatusText = await _bridge.RunAsync(_agent, $"/session delete {node.SessionId.Value}");
+        RefreshSessions();
+    }
+
+    [RelayCommand]
+    private async Task ExportSessionLogAsync()
+    {
+        var persistence = _ctx.Get<ISessionPersistence>(PersistenceServiceName, false);
+        if (persistence is null)
+        {
+            StatusText = "会话持久化不可用";
+            return;
+        }
+        try
+        {
+            using var handle = persistence.Open(_agent.Id, SessionAccess.Read);
+            var events = handle.Read();
+            var directory = Path.Combine(Home.Root, "exports");
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, $"{_agent.Id.Value}-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.jsonl");
+            await using var stream = File.Create(path);
+            await using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
+            foreach (var sessionEvent in events)
+                DshJson.Serialize(writer, sessionEvent);
+            await writer.FlushAsync();
+            StatusText = $"已导出 {events.Count} 条事件: {path}";
+            CopyRequested?.Invoke(path);
+        }
+        catch (Exception error)
+        {
+            StatusText = $"导出失败: {error.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void OpenSessionFolder() => DesktopIntegration.OpenPath(Path.Combine(Home.Root, "sessions"));
+
+    [RelayCommand]
+    private void SetWorkspaceView(string view) => WorkspaceView = view == GuiSettings.ViewFilesystem ? GuiSettings.ViewFilesystem : GuiSettings.ViewSolution;
+
+    [RelayCommand]
+    private void SetSort(string mode)
+    {
+        SortMode = mode == GuiSettings.SortName ? GuiSettings.SortName : GuiSettings.SortUpdated;
+        Gui.Save(Gui.Load() with { SortSessions = SortMode });
+        RefreshSessions();
+    }
+
+    [RelayCommand]
+    private void SelectTraceFilter(TraceFilterViewModel? filter)
+    {
+        if (filter is null)
+            return;
+        foreach (var candidate in TraceFilters)
+            candidate.IsSelected = ReferenceEquals(candidate, filter);
+        Gui.Save(Gui.Load() with { TraceFilter = filter.Kind is { } kind ? TraceItemViewModel.Wire(kind) : GuiSettings.TraceAll });
+        RefreshTraceView();
     }
 
     [RelayCommand]
@@ -235,37 +444,298 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ScrollRequested?.Invoke(message);
     }
 
+    [RelayCommand]
+    private void ToggleMessageFold(MessageViewModel? message) => message?.ToggleFoldCommand.Execute(null);
+
+    [RelayCommand]
+    private void CopyMessage(MessageViewModel? message)
+    {
+        if (message is { } value)
+            CopyRequested?.Invoke(value.Text);
+    }
+
+    [RelayCommand]
+    private void LikeMessage(MessageViewModel? message)
+    {
+        if (message is null)
+            return;
+        message.Feedback = message.Feedback == MessageFeedback.Liked ? MessageFeedback.None : MessageFeedback.Liked;
+        StatusText = message.Feedback == MessageFeedback.Liked ? "已记录「有帮助」" : "已取消反馈";
+    }
+
+    [RelayCommand]
+    private void DislikeMessage(MessageViewModel? message)
+    {
+        if (message is null)
+            return;
+        message.Feedback = message.Feedback == MessageFeedback.Disliked ? MessageFeedback.None : MessageFeedback.Disliked;
+        StatusText = message.Feedback == MessageFeedback.Disliked ? "已记录「没帮助」" : "已取消反馈";
+    }
+
+    [RelayCommand]
+    private void RegenerateMessage(MessageViewModel? message)
+    {
+        var lastUser = _lastUserMessages.LastOrDefault();
+        if (lastUser is null)
+        {
+            StatusText = "没有可重新生成的用户消息";
+            return;
+        }
+        StatusText = "重新生成上一条回答";
+        _agent.Followup(MessageFactory.CreateUserText(lastUser.Text));
+    }
+
+    [RelayCommand]
+    private void SetMode(string mode)
+    {
+        switch (mode)
+        {
+            case "plan":
+                _ = TogglePlanModeAsync();
+                return;
+            case "readonly":
+                ApplyApprovalPolicy(ApprovalPolicy.Never, SessionMode.ReadOnly, "只读模式：需要审批的操作会被自动拒绝");
+                return;
+            case "full":
+                ApplyApprovalPolicy(ApprovalPolicy.Auto, SessionMode.FullAccess, "Full access：需要审批的工具自动放行（黑名单仍然生效）");
+                return;
+            case "creative":
+                StatusText = "创造模式尚未实现";
+                return;
+            default:
+                ApplyApprovalPolicy(ApprovalPolicy.Ask, SessionMode.Standard, "标准模式：需要审批时弹窗确认");
+                return;
+        }
+    }
+
+    [RelayCommand]
+    private void SetPermission(string permission)
+    {
+        switch (permission)
+        {
+            case "full":
+                SetMode("full");
+                return;
+            case "readonly":
+                SetMode("readonly");
+                return;
+            default:
+                SetMode("standard");
+                return;
+        }
+    }
+
+    [RelayCommand]
+    private void InsertMention(string text)
+    {
+        var insert = $"@{text}";
+        Composer.Input = Composer.Input.Length == 0 ? $"{insert} " : $"{Composer.Input.TrimEnd()} {insert} ";
+    }
+
+    [RelayCommand]
+    private async Task AttachFileAsync()
+    {
+        var files = await PickAsync(allowMultiple: true, folders: false);
+        foreach (var file in files)
+            InsertMention(Relative(file));
+        StatusText = files.Count > 0 ? $"已引用 {files.Count} 个文件" : StatusText;
+    }
+
+    [RelayCommand]
+    private async Task AttachFolderAsync()
+    {
+        var folders = await PickAsync(allowMultiple: false, folders: true);
+        foreach (var folder in folders)
+            InsertMention(Relative(folder));
+        StatusText = folders.Count > 0 ? $"已引用文件夹 {folders[0]}" : StatusText;
+    }
+
+    [RelayCommand]
+    private async Task CompactAsync() => StatusText = await _bridge.RunAsync(_agent, "/compact");
+
+    [RelayCommand]
+    private async Task ReloadMcpAsync() => StatusText = await _bridge.RunAsync(_agent, "/mcp");
+
+    [RelayCommand]
+    private async Task RefreshModelsAsync()
+    {
+        Preferences.Reload();
+        StatusText = $"模型列表已刷新（{Preferences.Models.Count} 个）";
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private void MoveSuggestion(int delta)
+    {
+        if (Suggestions.Count == 0)
+            return;
+        SuggestionIndex = (SuggestionIndex + delta + Suggestions.Count) % Suggestions.Count;
+    }
+
+    [RelayCommand]
+    private void ConfirmSuggestion()
+    {
+        if (!IsSuggestionOpen || Suggestions.Count == 0)
+            return;
+        var suggestion = Suggestions[Math.Clamp(SuggestionIndex, 0, Suggestions.Count - 1)];
+        ApplySuggestion(suggestion);
+    }
+
+    [RelayCommand]
+    private void CloseSuggestions()
+    {
+        IsSuggestionOpen = false;
+        Suggestions.Clear();
+    }
+
     public void Dispose()
     {
         if (_disposed)
             return;
         _disposed = true;
+        Composer.PropertyChanged -= OnComposerPropertyChanged;
         _settings.Changed -= OnSettingsChanged;
         foreach (var unsubscribe in _unsubscribers)
             unsubscribe();
         _unsubscribers.Clear();
     }
 
+    /** 文件选择由视图提供(Avalonia 对话框需要 TopLevel), 未接视图时返回空。 */
+    public Func<bool, bool, Task<IReadOnlyList<string>>>? FilePicker { get; set; }
+
+    public void SetStatus(string text) => StatusText = text;
+
+    public void PersistWindowBounds(double width, double height, int x, int y, bool maximized)
+        => Gui.Save(Gui.Load() with
+        {
+            WindowWidth = width,
+            WindowHeight = height,
+            WindowX = x,
+            WindowY = y,
+            WindowMaximized = maximized,
+        });
+
+    private async Task<IReadOnlyList<string>> PickAsync(bool allowMultiple, bool folders)
+        => FilePicker is null ? [] : await FilePicker(allowMultiple, folders);
+
+    private string Relative(string path)
+    {
+        var cwd = _agent.Session.Header.Cwd ?? Environment.CurrentDirectory;
+        try
+        {
+            var relative = Path.GetRelativePath(cwd, path);
+            return relative.StartsWith("..", StringComparison.Ordinal) ? path : relative.Replace('\\', '/');
+        }
+        catch (Exception)
+        {
+            return path;
+        }
+    }
+
     private AgentOptions CurrentOptions()
         => new(_agent.Options.Provider, _agent.Options.Model, _agent.Options.ReasoningEffort, _agent.Options.MaxTokens);
 
     private IReadOnlyList<SessionNodeViewModel> AllSessions()
-        => [.. Workspaces.SelectMany(workspace => workspace.Sessions)];
+        => [.. Workspaces.SelectMany(workspace => workspace.Sessions).Concat(FileSystemNodes.SelectMany(node => node.Sessions))];
 
     private SessionNodeViewModel? FindSession(SessionId id)
         => AllSessions().FirstOrDefault(node => node.SessionId == id);
 
-    private static IReadOnlyList<WorkspaceGroupViewModel> GroupByWorkspace(IReadOnlyList<SessionNodeViewModel> nodes)
+    private IReadOnlyList<SessionNodeViewModel> FilteredCatalog()
+    {
+        var nodes = _catalog.Load();
+        var search = SearchText.Trim();
+        if (search.Length > 0)
+        {
+            nodes = [.. nodes.Where(node =>
+                node.Title.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || node.Workspace.Contains(search, StringComparison.OrdinalIgnoreCase))];
+        }
+        if (OnlyWithSessions)
+            nodes = [.. nodes.Where(node => node.IsLive)];
+        return nodes;
+    }
+
+    private IReadOnlyList<WorkspaceGroupViewModel> GroupByWorkspace(IReadOnlyList<SessionNodeViewModel> nodes)
         => [.. nodes
             .GroupBy(node => node.Workspace, StringComparer.Ordinal)
             .OrderByDescending(group => group.Max(node => node.CreatedAt))
             .Select(group =>
             {
                 var workspace = new WorkspaceGroupViewModel { Name = group.Key };
-                foreach (var node in group.OrderByDescending(node => node.CreatedAt))
+                foreach (var node in Sort(group))
                     workspace.Sessions.Add(node);
                 return workspace;
             })];
+
+    private IReadOnlyList<WorkspaceNodeViewModel> BuildFileTree(IReadOnlyList<SessionNodeViewModel> nodes)
+    {
+        var roots = new List<WorkspaceNodeViewModel>();
+        var index = new Dictionary<string, WorkspaceNodeViewModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in nodes)
+        {
+            var path = string.IsNullOrWhiteSpace(node.Cwd) ? "未指定目录" : Path.GetFullPath(node.Cwd);
+            var current = EnsurePath(roots, index, path);
+            current.Sessions.Add(node);
+        }
+        return roots;
+    }
+
+    private WorkspaceNodeViewModel EnsurePath(
+        List<WorkspaceNodeViewModel> roots,
+        Dictionary<string, WorkspaceNodeViewModel> index,
+        string path)
+    {
+        if (index.TryGetValue(path, out var existing))
+            return existing;
+        var parentPath = Path.GetDirectoryName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (name.Length == 0)
+            name = path;
+        var node = new WorkspaceNodeViewModel { Name = name, FullPath = path };
+        index[path] = node;
+        if (parentPath is { Length: > 0 } && !string.Equals(parentPath, path, StringComparison.OrdinalIgnoreCase))
+            EnsurePath(roots, index, parentPath).Children.Add(node);
+        else
+            roots.Add(node);
+        return node;
+    }
+
+    private IEnumerable<SessionNodeViewModel> Sort(IEnumerable<SessionNodeViewModel> nodes)
+        => SortMode == GuiSettings.SortName
+            ? nodes.OrderBy(node => node.Title, StringComparer.OrdinalIgnoreCase)
+            : nodes.OrderByDescending(node => node.CreatedAt);
+
+    private void RefreshTraceFilters()
+    {
+        var current = Gui.Load().TraceFilter;
+        TraceFilters.Clear();
+        AddTraceFilter(null, "全部", current);
+        AddTraceFilter(TraceKind.Turn, "轮次", current);
+        AddTraceFilter(TraceKind.Reasoning, "思考", current);
+        AddTraceFilter(TraceKind.Tool, "工具", current);
+        AddTraceFilter(TraceKind.Context, "上下文", current);
+        AddTraceFilter(TraceKind.Approval, "审批", current);
+        AddTraceFilter(TraceKind.Command, "命令", current);
+    }
+
+    private void AddTraceFilter(TraceKind? kind, string label, string current)
+    {
+        var wire = kind is { } value ? TraceItemViewModel.Wire(value) : GuiSettings.TraceAll;
+        TraceFilters.Add(new TraceFilterViewModel(kind, label) { IsSelected = wire == current });
+    }
+
+    private void RefreshTraceView()
+    {
+        var selected = TraceFilters.FirstOrDefault(filter => filter.IsSelected);
+        TraceView.Clear();
+        foreach (var item in TraceItems)
+        {
+            if (selected?.Kind is { } kind && item.Kind != kind)
+                continue;
+            TraceView.Add(item);
+        }
+    }
 
     private void OnSettingsChanged() => Dispatcher.UIThread.Post(RefreshSessions);
 
@@ -275,29 +745,55 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _events.Enqueue(notification.Event);
     }
 
+    private void OnComposerPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(ComposerViewModel.Input))
+            RefreshSuggestions();
+    }
+
     private ValueTask<object?> OnApprovalRequest(ApprovalRequestNotification notification, Func<ValueTask<object?>> next)
     {
-        var handler = ApprovalRequested;
+        var handler = DecisionRequested;
         if (handler is null)
             return next();
-        var answer = new TaskCompletionSource<ApprovalOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Dispatcher.UIThread.Post(() => _ = AskApprovalAsync(handler, notification.Request, answer));
+        var request = notification.Request;
+        var answer = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        DispatchDecision(() => AskAsync(handler, DecisionViewModel.ForApproval(request), answer));
         return new ValueTask<object?>(answer.Task);
     }
 
-    private static async Task AskApprovalAsync(
-        Func<ApprovalRequest, Task<ApprovalOutcome>> handler,
-        ApprovalRequest request,
-        TaskCompletionSource<ApprovalOutcome> answer)
+    private ValueTask<object?> OnUserQuestionRequest(UserQuestionsRequestNotification notification, Func<ValueTask<object?>> next)
+    {
+        var handler = DecisionRequested;
+        if (handler is null)
+            return next();
+        var request = notification.Request;
+        var answer = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        DispatchDecision(() => AskAsync(handler, DecisionViewModel.ForQuestion(request), answer));
+        return new ValueTask<object?>(answer.Task);
+    }
+
+    /** 事件可能来自后台线程: 已在 UI 线程时直接处理, 否则投递过去。 */
+    private static void DispatchDecision(Func<Task> ask)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+            _ = ask();
+        else
+            Dispatcher.UIThread.Post(() => _ = ask());
+    }
+
+    private static async Task AskAsync(
+        Func<DecisionViewModel, Task<object?>> handler,
+        DecisionViewModel decision,
+        TaskCompletionSource<object?> answer)
     {
         try
         {
-            answer.TrySetResult(await handler(request));
+            answer.TrySetResult(await handler(decision));
         }
-        catch (Exception error)
+        catch (Exception)
         {
-            answer.TrySetResult(ApprovalOutcome.Cancelled);
-            _ = error;
+            answer.TrySetResult(null);
         }
     }
 
@@ -328,9 +824,43 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task RunCommandAsync(string text)
     {
-        var output = await _settings.RunCommandAsync(_agent, text);
+        var output = await _bridge.RunAsync(_agent, text);
         if (output.Length > 0)
             AppendMessage(new MessageViewModel("系统", output, MessageKind.System, false));
+    }
+
+    private async Task NewSessionAsync()
+    {
+        var handle = await _agents.Create(new CreateAgentOptions(
+            SessionId.Create($"session-{Guid.NewGuid()}"),
+            _agent.Session.Header.Cwd ?? Environment.CurrentDirectory,
+            CurrentOptions()));
+        var created = (AgentLoopAgent)handle.Agent;
+        await created.WhenIdle();
+        RefreshSessions();
+        ShowAgent(created);
+    }
+
+    private async Task TogglePlanModeAsync()
+    {
+        var output = await _bridge.RunAsync(_agent, "/plan");
+        var enabled = output.Contains("on", StringComparison.OrdinalIgnoreCase);
+        Mode = enabled ? SessionMode.Plan : SessionMode.Standard;
+        StatusText = output;
+    }
+
+    private void ApplyApprovalPolicy(ApprovalPolicy policy, SessionMode mode, string status)
+    {
+        var approval = _ctx.Get<ApprovalService>(ApprovalService.ServiceName, false);
+        if (approval is null)
+        {
+            StatusText = "审批服务不可用";
+            return;
+        }
+        approval.SetPolicy(_agent, policy);
+        Mode = mode;
+        RefreshPermissionLabel();
+        StatusText = status;
     }
 
     private void ShowAgent(AgentLoopAgent agent)
@@ -341,12 +871,60 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _openReasoning = null;
         Messages.Clear();
         TraceItems.Clear();
+        TraceView.Clear();
+        _lastUserMessages.Clear();
         SessionTitle = agent.Session.Header.Title ?? agent.Id.Value;
         SessionSubtitle = ModelLabel(agent);
         ApplyEvents(agent.Session.SnapshotEvents());
         IsBusy = agent.Status == AgentStatus.Running;
+        RefreshMode();
+        RefreshPermissionLabel();
         SelectedSession = FindSession(agent.Id);
         AgentChanged?.Invoke(agent);
+    }
+
+    private void RefreshMode()
+        => Mode = PlanActive(_agent.Session) ? SessionMode.Plan : SessionMode.Standard;
+
+    /** 计划模式状态持久在会话事件 `plan/mode` 里; 这里只读它, 不复制 PlanMode 插件的判定逻辑。 */
+    private static bool PlanActive(Session session)
+    {
+        var active = false;
+        foreach (var sessionEvent in session.SnapshotEvents())
+        {
+            if (sessionEvent.Type != "plan/mode")
+                continue;
+            active = ReadBoolProperty(sessionEvent.Data, "Active") ?? active;
+        }
+        return active;
+    }
+
+    private static bool? ReadBoolProperty(SessionEventPayload payload, string name)
+    {
+        try
+        {
+            var node = JsonSerializer.SerializeToNode(payload, payload.GetType(), DshJson.Options);
+            return node is JsonObject json && json.TryGetPropertyValue(name, out var value) && value is not null
+                ? value.GetValue<bool>()
+                : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void RefreshPermissionLabel()
+    {
+        var approval = _ctx.Get<ApprovalService>(ApprovalService.ServiceName, false);
+        var policy = approval?.EffectivePolicy(_agent.Session) ?? ApprovalPolicy.Ask;
+        Composer.PermissionLabel = policy switch
+        {
+            ApprovalPolicy.Never => "只读（自动拒绝）",
+            ApprovalPolicy.Auto => "Full access",
+            _ => "Ask（每次审批）",
+        };
+        Composer.ModelLabel = ModelLabel(_agent);
     }
 
     private void ApplyEvents(IReadOnlyList<SessionEvent> batch)
@@ -368,15 +946,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             case TurnStartPayload turn:
                 IsBusy = true;
+                TokenStats.ObserveTurn(turn.Turn, 0);
                 AddTrace(sessionEvent.Seq, TraceKind.Turn, $"第 {turn.Turn} 轮");
+                break;
+            case StepStartPayload step:
+                TokenStats.ObserveTurn(step.Turn, step.Step);
                 break;
             case TurnEndPayload turn:
                 IsBusy = false;
+                TokenStats.RequestFinished();
                 AddTrace(sessionEvent.Seq, TraceKind.Turn, $"第 {turn.Turn} 轮结束", TurnEndText(turn.Reason));
                 ApplyTurnEnd(turn.Reason);
                 break;
             case UserMessagePayload user:
                 ApplyUserMessage(sessionEvent.Seq, user);
+                break;
+            case RequestHeaderPayload:
+                TokenStats.RequestStarted();
                 break;
             case AssistantChunkPayload chunk:
                 ApplyChunk(sessionEvent.Seq, chunk.Chunk);
@@ -398,7 +984,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 AddTrace(sessionEvent.Seq, TraceKind.Command, $"命令 /{run.Name}", run.Args ?? "");
                 break;
             case ApprovalAskedPayload asked:
-                AddTrace(sessionEvent.Seq, TraceKind.Approval, $"审批 {asked.ToolName}", asked.Reason ?? "");
+                AddTrace(sessionEvent.Seq, TraceKind.Approval, $"审批 {asked.ToolName}", ApprovalHints.PrimaryArgument(asked.ToolName, asked.Arguments));
+                break;
+            case ApprovalGrantedPayload granted:
+                AddTrace(sessionEvent.Seq, TraceKind.Approval, $"本会话不再询问 {granted.ToolName}");
+                break;
+            case ApprovalPolicyPayload:
+                RefreshPermissionLabel();
                 break;
         }
     }
@@ -409,12 +1001,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         switch (payload.Message.Source)
         {
             case UserMessageSource:
-                AppendMessage(new MessageViewModel("你", text, MessageKind.User, false));
+                var user = AppendMessage(new MessageViewModel("你", text, MessageKind.User, false));
+                _lastUserMessages.Add(user);
                 break;
             case PluginMessageSource plugin:
                 var label = $"上下文注入 · {plugin.Plugin}";
-                AppendMessage(new MessageViewModel("", label, MessageKind.Context, false));
-                AddTrace(seq, TraceKind.Context, label, plugin.Summary ?? text);
+                var injected = AppendMessage(new MessageViewModel("", label, MessageKind.Context, false));
+                injected.Detail = plugin.Summary ?? text;
+                AddTrace(seq, TraceKind.Context, label, injected.Detail);
                 break;
             default:
                 AppendMessage(new MessageViewModel(payload.Message.Source.Kind, text, MessageKind.System, false));
@@ -439,13 +1033,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 AddTrace(seq, TraceKind.Reasoning, "思考");
                 break;
             case StreamChunk.ReasoningDelta delta when delta.Text.Length > 0:
+                TokenStats.FirstTokenArrived();
                 AppendReasoning(delta.Text);
                 break;
             case StreamChunk.BlockStart { BlockType: "text" }:
                 _openAssistant = null;
                 break;
             case StreamChunk.TextDelta delta when delta.Text.Length > 0:
+                TokenStats.FirstTokenArrived();
                 AppendAssistant(delta.Text);
+                break;
+            case StreamChunk.Usage usage:
+                TokenStats.ObserveUsage(usage.Value);
                 break;
             case StreamChunk.BlockEnd:
                 // 保留 _openAssistant: 紧随其后的 assistant/message 会用最终文本覆盖同一条记录, 避免出现重复消息。
@@ -471,7 +1070,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _openAssistant = null;
         _openReasoning = null;
-        AppendMessage(new MessageViewModel("工具", $"{call.Name} {call.Arguments}", MessageKind.Tool, false));
+        var message = AppendMessage(new MessageViewModel("工具", $"{call.Name} {call.Arguments}", MessageKind.Tool, false));
+        message.Detail = call.Arguments;
         AddTrace(seq, TraceKind.Tool, $"工具 {call.Name}", call.Arguments);
     }
 
@@ -479,10 +1079,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         var text = ContentText(result.Message.Content);
         var label = result.Error is null ? "结果" : $"错误 {result.Error.Code}";
-        AppendMessage(new MessageViewModel(label, text, MessageKind.Result, false));
+        var message = AppendMessage(new MessageViewModel(label, text, MessageKind.Result, false));
+        message.Detail = text;
         AddTrace(seq, TraceKind.Tool, result.Error is null ? "工具结果" : $"工具失败 {result.Error.Code}", text);
     }
-
 
     private void AppendAssistant(string delta)
     {
@@ -506,7 +1106,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void AddTrace(long seq, TraceKind kind, string title, string detail = "")
     {
-        TraceItems.Add(new TraceItemViewModel
+        var trace = new TraceItemViewModel
         {
             Seq = seq,
             Kind = kind,
@@ -514,7 +1114,104 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Detail = Preview(detail),
             Time = DateTimeOffset.Now.ToString("HH:mm:ss"),
             Message = Messages.Count > 0 ? Messages[^1] : null,
-        });
+        };
+        TraceItems.Add(trace);
+        var selected = TraceFilters.FirstOrDefault(filter => filter.IsSelected);
+        if (selected?.Kind is null || selected.Kind == kind)
+            TraceView.Add(trace);
+    }
+
+    private string ExpandMentions(string text)
+        => MentionResolver.ExpandMentions(text, _agent.Session.Header.Cwd ?? Environment.CurrentDirectory, CurrentMentionSessions());
+
+    private IReadOnlyList<MentionSessionInfo> CurrentMentionSessions()
+        => [.. _catalog.Load().Select(node => new MentionSessionInfo(node.SessionId.Value, node.Title, null))];
+
+    private void RefreshSuggestions()
+    {
+        if (_updatingSuggestions || _disposed)
+            return;
+        var input = Composer.Input;
+        var suggestions = BuildSuggestions(input);
+        _updatingSuggestions = true;
+        Suggestions.Clear();
+        foreach (var suggestion in suggestions)
+            Suggestions.Add(suggestion);
+        SuggestionIndex = 0;
+        IsSuggestionOpen = Suggestions.Count > 0;
+        _updatingSuggestions = false;
+    }
+
+    private IReadOnlyList<SuggestionViewModel> BuildSuggestions(string input)
+    {
+        if (input.StartsWith('@') || input.Contains(" @", StringComparison.Ordinal))
+            return MentionSuggestions(input);
+        if (input.StartsWith('/'))
+            return CommandSuggestions(input);
+        return [];
+    }
+
+    private IReadOnlyList<SuggestionViewModel> CommandSuggestions(string input)
+    {
+        var body = input[1..];
+        var space = body.IndexOf(' ');
+        var name = space < 0 ? body : body[..space];
+        if (space >= 0)
+        {
+            var argument = body[(space + 1)..].TrimEnd();
+            return ArgumentSuggestions(name, argument);
+        }
+        return [.. _bridge.List(_agent)
+            .Where(descriptor => descriptor.Name.StartsWith(name, StringComparison.OrdinalIgnoreCase))
+            .Select(descriptor => new SuggestionViewModel("command", $"/{descriptor.Name}", descriptor.Description, $"/{descriptor.Name} "))];
+    }
+
+    private IReadOnlyList<SuggestionViewModel> ArgumentSuggestions(string name, string argument)
+    {
+        var candidates = name switch
+        {
+            "model" => Preferences.Models,
+            "session" => _catalog.Load().Select(node => node.SessionId.Value),
+            "skill" => [],
+            "provider" => [],
+            _ => [],
+        };
+        return [.. candidates
+            .Where(candidate => candidate.StartsWith(argument, StringComparison.OrdinalIgnoreCase))
+            .Take(20)
+            .Select(candidate => new SuggestionViewModel("argument", $"/{name} {candidate}", "", $"/{name} {candidate} "))];
+    }
+
+    private IReadOnlyList<SuggestionViewModel> MentionSuggestions(string input)
+    {
+        var at = input.LastIndexOf('@');
+        var end = at + 1;
+        while (end < input.Length && !char.IsWhiteSpace(input[end]) && input[end] != '@')
+            end++;
+        var token = input[(at + 1)..end];
+        var cwd = _agent.Session.Header.Cwd ?? Environment.CurrentDirectory;
+        return [.. MentionResolver.ResolveCandidates(token, cwd, CurrentMentionSessions())
+            .Take(20)
+            .Select(candidate => new SuggestionViewModel("mention", $"@{candidate}", "", $"@{candidate}"))];
+    }
+
+    private void ApplySuggestion(SuggestionViewModel suggestion)
+    {
+        if (suggestion.Kind == "argument")
+        {
+            Composer.Input = suggestion.InsertText;
+        }
+        else if (suggestion.Kind == "mention")
+        {
+            var input = Composer.Input;
+            var at = input.LastIndexOf('@');
+            Composer.Input = at < 0 ? input : input[..at] + suggestion.InsertText + " ";
+        }
+        else
+        {
+            Composer.Input = suggestion.InsertText;
+        }
+        CloseSuggestions();
     }
 
     private static string Preview(string text)

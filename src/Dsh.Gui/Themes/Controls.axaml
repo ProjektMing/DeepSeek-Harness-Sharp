@@ -234,4 +234,47 @@
     <Setter Property="Background" Value="{DynamicResource Brush.Border.Subtle}" />
   </Style>
 
+  <Style Selector="Button.Chip">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Subtle}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource CornerRadius.Control}" />
+    <Setter Property="Padding" Value="10,5" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.List}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+  </Style>
+
+  <Style Selector="Button.Chip:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+  </Style>
+
+  <Style Selector="Button.Chip.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Brush.Accent.Soft}" />
+  </Style>
+
+  <Style Selector="TextBox.Search">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Inset}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource CornerRadius.Control}" />
+    <Setter Property="Padding" Value="8,5" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.List}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+  </Style>
+
+  <Style Selector="Button.TitleButton">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Button.TitleButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+  </Style>
+
+  <Style Selector="Button.TitleButton.close:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Brush.Status.Error}" />
+  </Style>
+
 </Styles>

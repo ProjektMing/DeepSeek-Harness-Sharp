@@ -51,7 +51,9 @@ public sealed class Plugin(string packageName) : IDshPlugin
             ProviderCommand.Register(ctx, options.Home),
             MemoryCommand.Register(ctx, options),
             PluginCommand.Register(ctx, catalog),
-            SafetyCommandGuard.Register(ctx, settings.Safety));
+            SafetyCommandGuard.Register(ctx, settings.Safety),
+            // safety.autoApprove=true 时全局自动放行需要审批的工具(黑名单仍在前置 Guard 拦截)。
+            settings.Safety?.AutoApprove == true ? ApprovalAnswerers.AutoApprove(ctx) : null);
     }
 
     private static IReadOnlyDictionary<string, object?>? ConfigOf(object? config)

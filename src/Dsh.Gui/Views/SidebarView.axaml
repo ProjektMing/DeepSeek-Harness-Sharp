@@ -11,9 +11,7 @@
     <StackPanel DockPanel.Dock="Top" Margin="12,12,12,4" Spacing="10">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <Border Width="30" Height="30" CornerRadius="9" Background="{DynamicResource Brush.Accent}">
-          <TextBlock Text="D" FontSize="16" FontWeight="Bold"
-                     Foreground="{DynamicResource Brush.Text.OnAccent}"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+          <Image Source="avares://Dsh.Gui/Assets/icon.png" Width="22" Height="22" />
         </Border>
         <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
           <TextBlock Text="deepseek" FontSize="{DynamicResource FontSize.Brand}" FontWeight="SemiBold"
@@ -33,19 +31,47 @@
         </StackPanel>
       </Button>
 
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,4,0,0">
-        <TextBlock Text="工作区" Classes="Secondary" VerticalAlignment="Center" />
+      <Button Classes="Ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="6,4"
+              Margin="0,4,0,0" Command="{Binding ShowChatCommand}" ToolTip.Tip="回到会话">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Folder}" />
+          <TextBlock Text="工作区" Classes="Secondary" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2,0,0">
+        <Button Classes="Chip" HorizontalAlignment="Left" ToolTip.Tip="工作区视图">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="{Binding WorkspaceViewLabel}" />
+            <Path Classes="Icon" Width="12" Height="12" Data="{StaticResource Icon.ChevronDown}" />
+          </StackPanel>
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+              <MenuItem Header="解决方案视图" Command="{Binding SetWorkspaceViewCommand}" CommandParameter="solution" />
+              <MenuItem Header="文件系统视图" Command="{Binding SetWorkspaceViewCommand}" CommandParameter="filesystem" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
         <Button Grid.Column="1" Classes="Icon" Width="26" Height="26" Command="{Binding RefreshSessionsCommand}"
                 ToolTip.Tip="刷新会话列表">
           <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Refresh}" />
         </Button>
-        <Button Grid.Column="2" Classes="Icon" Width="26" Height="26" ToolTip.Tip="搜索(待实现)">
-          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Search}" />
+        <Button Grid.Column="2" Classes="Icon" Width="26" Height="26" ToolTip.Tip="排序">
+          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Sort}" />
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <MenuItem Header="按更新时间排序" Command="{Binding SetSortCommand}" CommandParameter="updated" />
+              <MenuItem Header="按名称排序" Command="{Binding SetSortCommand}" CommandParameter="name" />
+              <MenuItem Header="只看有会话的" ToggleType="CheckBox" IsChecked="{Binding OnlyWithSessions, Mode=TwoWay}" />
+            </MenuFlyout>
+          </Button.Flyout>
         </Button>
         <Button Grid.Column="3" Classes="Icon" Width="26" Height="26" ToolTip.Tip="新建会话" Command="{Binding NewSessionCommand}">
           <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Plus}" />
         </Button>
       </Grid>
+
+      <TextBox Classes="Search" Watermark="搜索会话" Text="{Binding SearchText}" />
     </StackPanel>
 
     <StackPanel DockPanel.Dock="Bottom" Margin="8,4,8,8" Spacing="2">
@@ -65,39 +91,90 @@
       </Button>
     </StackPanel>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="6,0,0,0">
-      <ItemsControl ItemsSource="{Binding Workspaces}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:WorkspaceGroupViewModel">
-            <StackPanel Margin="0,2,0,4">
-              <Button Classes="Ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                      Command="{Binding ToggleCommand}" Padding="6,4">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Folder}" />
-                  <TextBlock Text="{Binding Name}" Classes="Secondary" VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
-              <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding IsExpanded}" Margin="10,0,0,0">
+    <Grid>
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="6,0,0,0" IsVisible="{Binding IsSolutionView}">
+        <ItemsControl ItemsSource="{Binding Workspaces}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:WorkspaceGroupViewModel">
+              <StackPanel Margin="0,2,0,4">
+                <Button Classes="Ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding ToggleCommand}" Padding="6,4">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Folder}" />
+                    <TextBlock Text="{Binding Name}" Classes="Secondary" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding IsExpanded}" Margin="10,0,0,0">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SessionNodeViewModel">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <Button Classes="SessionItem" Classes.selected="{Binding IsSelected}"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,5"
+                                IsVisible="{Binding !IsRenaming}"
+                                Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenSessionCommand}"
+                                CommandParameter="{Binding}">
+                          <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding Title}" Classes="Body" FontSize="{DynamicResource FontSize.List}"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding RelativeTime}" Classes="Tertiary"
+                                       Margin="8,0,0,0" VerticalAlignment="Center" />
+                          </Grid>
+                        </Button>
+                        <TextBox Grid.ColumnSpan="2" Classes="Search" IsVisible="{Binding IsRenaming}"
+                                 Text="{Binding RenameDraft}"
+                                 KeyDown="OnRenameKeyDown" LostFocus="OnRenameLostFocus" />
+                        <Button Grid.Column="1" Classes="Icon" Width="24" Height="24" ToolTip.Tip="更多"
+                                VerticalAlignment="Center" IsVisible="{Binding !IsRenaming}">
+                          <Path Classes="Icon" Width="14" Height="14" Data="{StaticResource Icon.Menu}" />
+                          <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                              <MenuItem Header="打开"
+                                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenSessionCommand}"
+                                        CommandParameter="{Binding}" />
+                              <MenuItem Header="重命名"
+                                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).BeginRenameCommand}"
+                                        CommandParameter="{Binding}" />
+                              <MenuItem Header="导出日志"
+                                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).ExportSessionLogCommand}" />
+                              <MenuItem Header="删除"
+                                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).DeleteSessionCommand}"
+                                        CommandParameter="{Binding}" />
+                            </MenuFlyout>
+                          </Button.Flyout>
+                        </Button>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <TreeView ItemsSource="{Binding FileSystemNodes}" IsVisible="{Binding IsFileSystemView}"
+                Background="Transparent" Padding="6,0,0,0">
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate x:DataType="vm:WorkspaceNodeViewModel" ItemsSource="{Binding Children}">
+            <StackPanel Margin="0,2">
+              <TextBlock Text="{Binding Header}" Classes="Secondary" />
+              <ItemsControl ItemsSource="{Binding Sessions}" Margin="10,0,0,0">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:SessionNodeViewModel">
                     <Button Classes="SessionItem" Classes.selected="{Binding IsSelected}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,5"
                             Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenSessionCommand}"
                             CommandParameter="{Binding}">
-                      <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="{Binding Title}" Classes="Body" FontSize="{DynamicResource FontSize.List}"
-                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{Binding RelativeTime}" Classes="Tertiary"
-                                   Margin="8,0,0,0" VerticalAlignment="Center" />
-                      </Grid>
+                      <TextBlock Text="{Binding Title}" Classes="Body" FontSize="{DynamicResource FontSize.List}"
+                                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     </Button>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-    </ScrollViewer>
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+      </TreeView>
+    </Grid>
   </DockPanel>
 </UserControl>

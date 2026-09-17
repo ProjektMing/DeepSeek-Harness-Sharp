@@ -15,6 +15,7 @@
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
     <InvariantGlobalization>true</InvariantGlobalization>
     <CETCompat>false</CETCompat>
+    <ApplicationIcon Condition="Exists('..\src\Dsh.Gui\Assets\icon.ico')">..\src\Dsh.Gui\Assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

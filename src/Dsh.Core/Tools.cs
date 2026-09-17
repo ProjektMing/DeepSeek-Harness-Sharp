@@ -11,9 +11,16 @@ public enum ApprovalOutcome
     Rejected,
     Cancelled,
     Unavailable,
+    /** 用户选择「本会话内不再询问」: 新增值放在末尾, 避免改变已有取值的数值语义。 */
+    AllowedForSession,
 }
 
-public sealed record ApprovalRequest(IAgent Agent, string ToolName, ToolCallId CallId, string? Reason = null);
+public sealed record ApprovalRequest(
+    IAgent Agent,
+    string ToolName,
+    ToolCallId CallId,
+    string? Reason = null,
+    string? Arguments = null);
 
 public interface IApprovalService
 {
@@ -413,10 +420,10 @@ public sealed class ToolRuntime : Service
             return (new PreToolDecision.Deny(ask.Reason ?? $"tool \"{exec.Name}\" requires approval (not yet supported)"), false);
         if (exec.Agent is null)
             return (new PreToolDecision.Deny($"tool \"{exec.Name}\" requires approval, but the call has no agent to route it through"), false);
-        var outcome = await approval.Request(new ApprovalRequest(exec.Agent, exec.Name, exec.CallId, ask.Reason), exec.Signal);
+        var outcome = await approval.Request(new ApprovalRequest(exec.Agent, exec.Name, exec.CallId, ask.Reason, exec.Arguments.GetRawText()), exec.Signal);
         return outcome switch
         {
-            ApprovalOutcome.AllowedOnce => (new PreToolDecision.Allow(), false),
+            ApprovalOutcome.AllowedOnce or ApprovalOutcome.AllowedForSession => (new PreToolDecision.Allow(), false),
             ApprovalOutcome.Rejected => (new PreToolDecision.Deny($"the user rejected tool \"{exec.Name}\""), false),
             ApprovalOutcome.Cancelled => (new PreToolDecision.Deny($"approval for tool \"{exec.Name}\" was cancelled"), true),
             ApprovalOutcome.Unavailable => (new PreToolDecision.Deny($"tool \"{exec.Name}\" requires approval, but no approval channel is available"), false),

@@ -2,7 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Dsh.Gui.ViewModels;
 
-/** 输入胶囊的状态: 只保存用户输入与提交条件, 提交动作由 MainViewModel 承担。 */
+/** 输入胶囊的状态: 输入文本、权限/模型标签与提交条件; 具体动作由 MainViewModel 承担。 */
 public sealed partial class ComposerViewModel : ObservableObject
 {
     [ObservableProperty]
@@ -16,6 +16,32 @@ public sealed partial class ComposerViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _canSubmit;
+
+    [ObservableProperty]
+    private string _permissionLabel = "Ask（每次审批）";
+
+    [ObservableProperty]
+    private string _modelLabel = "";
+
+    [ObservableProperty]
+    private bool _isAttachmentMenuOpen;
+
+    [ObservableProperty]
+    private bool _isPermissionMenuOpen;
+
+    [ObservableProperty]
+    private bool _isModelMenuOpen;
+
+    [ObservableProperty]
+    private bool _isRefreshMenuOpen;
+
+    public void CloseMenus()
+    {
+        IsAttachmentMenuOpen = false;
+        IsPermissionMenuOpen = false;
+        IsModelMenuOpen = false;
+        IsRefreshMenuOpen = false;
+    }
 
     partial void OnInputChanged(string value) => CanSubmit = !IsBusy && value.Trim().Length > 0;
 
