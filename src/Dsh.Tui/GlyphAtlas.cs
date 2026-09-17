@@ -29,6 +29,8 @@ public sealed class GlyphAtlas
 
     private readonly object _gate = new();
     private readonly int[] _map = CreateEmptyMap();
+    private readonly int[] _mapUpload = new int[char.MaxValue + 1];
+    private readonly byte[] _bakedBitmap = new byte[(char.MaxValue + 1) / 8];
     private readonly char[] _slotChars = new char[Capacity];
     private readonly long[] _slotTicks = new long[Capacity];
     private readonly GlyphUv[] _uvs = BuildUvs();
@@ -37,6 +39,32 @@ public sealed class GlyphAtlas
     private readonly string _cachePath;
     private int _nextSlot;
     private bool _cacheDirty;
+    private long _accessCounter;
+
+    public int MapVersion { get; private set; }
+
+    internal ReadOnlySpan<int> MapUpload => _mapUpload;
+
+    internal byte[] BakedBitmap => _bakedBitmap;
+
+    public void EnsureBaked(ReadOnlySpan<Cell> cells)
+    {
+        List<char>? missing = null;
+        ref var bitmapRef = ref System.Runtime.InteropServices.MemoryMarshal.GetArrayDataReference(_bakedBitmap);
+        foreach (ref readonly var cell in cells)
+        {
+            var character = cell.Character;
+            if (character is '\0' or ' ' || (System.Runtime.CompilerServices.Unsafe.Add(ref bitmapRef, character >> 3) & (1 << (character & 7))) != 0)
+                continue;
+            missing ??= [];
+            if (!missing.Contains(character))
+                missing.Add(character);
+        }
+        if (missing is null)
+            return;
+        foreach (var character in missing)
+            BakeSlow(character);
+    }
 
     public GlyphAtlas(string? cachePath = null)
     {
@@ -64,7 +92,7 @@ public sealed class GlyphAtlas
         var slot = _map[character];
         if (slot >= 0)
         {
-            _slotTicks[slot] = Environment.TickCount64;
+            _slotTicks[slot] = ++_accessCounter;
             return slot;
         }
         return BakeSlow(character);
@@ -147,7 +175,7 @@ public sealed class GlyphAtlas
         }
     }
 
-    private int BakeSlow(char character)
+    internal int BakeSlow(char character)
     {
         if (ShouldFallback(character))
             character = '?';
@@ -159,8 +187,11 @@ public sealed class GlyphAtlas
             slot = _nextSlot < Capacity ? _nextSlot++ : EvictOldest();
             Bake(character, slot);
             _slotChars[slot] = character;
-            _slotTicks[slot] = Environment.TickCount64;
+            _slotTicks[slot] = ++_accessCounter;
             _map[character] = slot;
+            _bakedBitmap[character >> 3] |= (byte)(1 << (character & 7));
+            _mapUpload[character] = (slot + 1) | (TerminalTextWidth.IsWide(character) ? int.MinValue : 0);
+            MapVersion++;
             _dirtySlots.Add(slot);
             _cacheDirty = true;
             return slot;
@@ -176,6 +207,9 @@ public sealed class GlyphAtlas
                 oldest = slot;
         }
         _map[_slotChars[oldest]] = -1;
+        _bakedBitmap[_slotChars[oldest] >> 3] &= (byte)~(1 << (_slotChars[oldest] & 7));
+        _mapUpload[_slotChars[oldest]] = 0;
+        MapVersion++;
         return oldest;
     }
 
@@ -243,8 +277,11 @@ public sealed class GlyphAtlas
                         return;
                 }
                 _slotChars[slot] = character;
-                _slotTicks[slot] = Environment.TickCount64;
+                _slotTicks[slot] = ++_accessCounter;
                 _map[character] = slot;
+                _bakedBitmap[character >> 3] |= (byte)(1 << (character & 7));
+                _mapUpload[character] = (slot + 1) | (TerminalTextWidth.IsWide(character) ? int.MinValue : 0);
+                MapVersion++;
                 _nextSlot = Math.Max(_nextSlot, slot + 1);
             }
         }
@@ -358,6 +395,8 @@ public sealed class GlyphAtlas
 
     private static IReadOnlyList<FontFamily> ResolveFallbackFamilies()
     {
+        // JetBrains 宿主进程(例如 Rider 启动的终端、测试、调试子进程)会劫持字体解析环境(Linux: FONTCONFIG_PATH 指向 JBR 内置 fontconfig;Windows 同样验证过),
+        // 导致此处只能看到 JBR 自带字体,CJK 回退全部失效、宽字渲染为 tofu;真实终端会话不受影响,在该宿主内跑测试需显式恢复(如 FONTCONFIG_PATH=/etc/fonts)。
         string[] names =
         [
             "Microsoft YaHei",

@@ -13,15 +13,20 @@ public static class TerminalTextWidth
         return width;
     }
 
-    public static bool IsWide(char character) => character switch
+    public static bool IsWide(char character)
     {
-        >= '\u1100' and <= '\u115f' => true,
-        >= '\u2e80' and <= '\ua4cf' => true,
-        >= '\uac00' and <= '\ud7a3' => true,
-        >= '\uf900' and <= '\ufaff' => true,
-        >= '\ufe30' and <= '\ufe4f' => true,
-        >= '\uff00' and <= '\uff60' => true,
-        >= '\uffe0' and <= '\uffe6' => true,
-        _ => false,
-    };
+        if (character < '\u1100')
+            return false;
+        return character switch
+        {
+            <= '\u115f' => true,
+            >= '\u2e80' and <= '\ua4cf' => true,
+            >= '\uac00' and <= '\ud7a3' => true,
+            >= '\uf900' and <= '\ufaff' => true,
+            >= '\ufe30' and <= '\ufe4f' => true,
+            >= '\uff00' and <= '\uff60' => true,
+            >= '\uffe0' and <= '\uffe6' => true,
+            _ => false,
+        };
+    }
 }

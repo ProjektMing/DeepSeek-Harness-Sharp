@@ -51,8 +51,8 @@ public static class TuiRunner
         var grid = new CellGrid(size.Width, size.Height);
         chat.Draw(grid, layout);
         var renderer = new AnsiRenderer();
-        Console.Out.Write(renderer.Render(grid, chat.CursorScreenX, chat.CursorScreenY, forceFull: true));
-        Console.Out.Flush();
+        await Console.Out.WriteAsync(renderer.RenderToBuffer(grid, chat.CursorScreenX, chat.CursorScreenY, forceFull: true));
+        await Console.Out.FlushAsync();
 
         var sessions = app.Ctx.Get<SessionStore>(SessionStore.ServiceName)!;
         await sessions.Flush(agent.Session);
@@ -81,8 +81,8 @@ public static class TuiRunner
 
                 var layout = LayoutEngine.Calculate(size.Width, size.Height);
                 chat.Draw(grid, layout);
-                Console.Out.Write(renderer.Render(grid, chat.CursorScreenX, chat.CursorScreenY, forceFull));
-                Console.Out.Flush();
+                await Console.Out.WriteAsync(renderer.RenderToBuffer(grid, chat.CursorScreenX, chat.CursorScreenY, forceFull));
+                await Console.Out.FlushAsync();
                 forceFull = false;
 
                 if (chat.ExitRequested)

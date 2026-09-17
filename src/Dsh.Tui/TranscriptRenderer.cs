@@ -12,7 +12,6 @@ public sealed class TranscriptRenderer
     private readonly StringBuilder _buffer = new();
     private readonly List<TranscriptFold> _folds = [];
     private string? _cachedFullText;
-    private int _renderedLength;
     private bool _reasoningOpen;
     private bool _assistantOpen;
     private int _reasoningFoldStart;
@@ -32,16 +31,6 @@ public sealed class TranscriptRenderer
     }
 
     public void AppendRaw(string text) => Append(text);
-
-    public string TakeDelta()
-    {
-        lock (_buffer)
-        {
-            var delta = _buffer.ToString(_renderedLength, _buffer.Length - _renderedLength);
-            _renderedLength = _buffer.Length;
-            return delta;
-        }
-    }
 
     public void AppendUserMessage(UserMessage message)
     {

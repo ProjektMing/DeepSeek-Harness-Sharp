@@ -1,10 +1,34 @@
-using System.Text;
 using Dsh.Tui;
 
 namespace Dsh.Tests;
 
 public class AnsiRendererTests
 {
+    [Fact]
+    public void RenderToBuffer_Matches_String_Render()
+    {
+        var frames = new List<CellGrid>();
+        var baseGrid = new CellGrid(40, 8);
+        WriteText(baseGrid, 0, 1, "第一帧：包含中文与 ASCII 的内容");
+        frames.Add(baseGrid);
+        var edited = baseGrid.Clone();
+        WriteText(edited, 0, 3, "diff 帧");
+        frames.Add(edited);
+        var styled = edited.Clone();
+        for (var x = 0; x < 20; x++)
+            styled[x, 5] = new Cell('▀', AnsiColor.BrightCyan, AnsiColor.Black, CellStyle.Bold);
+        frames.Add(styled);
+
+        var stringRenderer = new AnsiRenderer();
+        var bufferRenderer = new AnsiRenderer();
+        foreach (var (index, grid) in frames.Index())
+        {
+            var expected = stringRenderer.Render(grid, 0, 0, forceFull: index == 0);
+            var actual = bufferRenderer.RenderToBuffer(grid, 0, 0, forceFull: index == 0);
+            Assert.Equal(expected, actual.Span.ToString());
+        }
+    }
+
     [Fact]
     public void Diff_After_Popup_Close_Over_Cjk_Line_Leaves_No_Remnants()
     {

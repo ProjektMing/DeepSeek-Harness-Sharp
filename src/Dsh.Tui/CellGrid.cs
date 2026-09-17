@@ -57,6 +57,29 @@ public sealed class CellGrid
 
     internal Cell[] RawCells => _cells;
 
+    public ReadOnlySpan<Cell> Cells => _cells;
+
+    public ReadOnlySpan<Cell> Row(int y)
+    {
+        if ((uint)y >= (uint)Height)
+            throw new ArgumentOutOfRangeException(nameof(y));
+        return _cells.AsSpan(y * Width, Width);
+    }
+
+    public void SetRow(int y, ReadOnlySpan<Cell> row)
+    {
+        if ((uint)y >= (uint)Height)
+            throw new ArgumentOutOfRangeException(nameof(y));
+        var target = _cells.AsSpan(y * Width, Width);
+        if (row.Length >= Width)
+            row[..Width].CopyTo(target);
+        else
+        {
+            row.CopyTo(target);
+            target[row.Length..].Clear();
+        }
+    }
+
     public Cell this[int x, int y]
     {
         get => _cells[(y * Width) + x];

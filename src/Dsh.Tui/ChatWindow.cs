@@ -51,6 +51,7 @@ public sealed class ChatWindow : IDisposable
     private int _wrapCacheVersion = -1;
     private int _wrapCacheWidth = -1;
     private List<string>? _wrapCacheLines;
+    private int _wrapProcessedOffset;
     private bool _sessionRenamedSubscribed;
 
     public ChatWindow(Context ctx, AgentLoopAgent agent, HarnessHome home, ISessionPersistence? persistence = null)
@@ -115,10 +116,6 @@ public sealed class ChatWindow : IDisposable
 
         if (actions.Count > 0 || sessionEvents.Count > 0)
             RenderVersion++;
-
-        var delta = _renderer.TakeDelta();
-        if (delta.Length > 0)
-            AppendText(delta);
     }
 
     public void HandleKey(ConsoleKeyInfo key)
@@ -810,9 +807,7 @@ public sealed class ChatWindow : IDisposable
 
         var displayMessage = MessageFactory.CreateUserText(text);
         _renderer.AppendUserMessage(displayMessage);
-        var delta = _renderer.TakeDelta();
-        if (delta.Length > 0)
-            AppendText(delta);
+        _stickToBottom = true;
 
         if (text.StartsWith('/'))
         {
@@ -1057,10 +1052,8 @@ public sealed class ChatWindow : IDisposable
         var transcriptVersion = _renderer.Version;
         if (_wrapCacheLines is null || _wrapCacheVersion != transcriptVersion || _wrapCacheWidth != rect.Width)
         {
-            var visible = BuildVisibleLines(_renderer.FullText, _renderer.Folds);
-            _wrapCacheLines = WrapLines(visible, rect.Width);
+            RebuildWrapCache(rect.Width);
             _wrapCacheVersion = transcriptVersion;
-            _wrapCacheWidth = rect.Width;
         }
         var wrapped = _wrapCacheLines;
         if (wrapped.Count == 0)
@@ -1313,70 +1306,148 @@ public sealed class ChatWindow : IDisposable
     private static string FoldKey(TranscriptFold fold)
         => $"{fold.Start}:{fold.Label}";
 
-    private static List<string> BuildVisibleLines(string text, IReadOnlyList<TranscriptFold> folds)
+    private sealed class VisualRow
     {
-        var source = SplitLines(text);
-        var collapsed = folds.Where(fold => fold.Collapsed).ToList();
-        var result = new List<string>();
-        var offset = 0;
-        for (var index = 0; index < source.Count; index++)
-        {
-            var line = source[index];
-            var lineStart = offset;
-            var fold = collapsed.FirstOrDefault(candidate => lineStart >= candidate.Start && lineStart < candidate.End);
-            if (fold is null)
-            {
-                result.Add(line);
-                offset += line.Length + 1;
-                continue;
-            }
-
-            if (lineStart == fold.Start)
-                result.Add(fold.Preview);
-            while (index < source.Count && offset < fold.End)
-            {
-                offset += source[index].Length + 1;
-                index++;
-            }
-
-            index--;
-        }
-
-        return result;
+        public required int SourceStart { get; init; }
+        public required int FlatStart { get; init; }
+        public required string[] Lines { get; init; }
     }
 
-    private static List<string> SplitLines(string text)
-        => string.IsNullOrEmpty(text) ? [] : text.Replace("\r\n", "\n").Split('\n').ToList();
+    private readonly List<VisualRow> _visualRows = [];
+    private readonly List<(int Start, int End, bool Collapsed)> _foldSnapshot = [];
 
-    private static List<string> WrapLines(IReadOnlyList<string> lines, int width)
+    private void RebuildWrapCache(int width)
     {
-        var result = new List<string>();
-        foreach (var line in lines)
+        var text = _renderer.FullText;
+        var folds = _renderer.Folds;
+        var from = 0;
+        if (_wrapCacheLines is not null && _wrapCacheWidth == width && _wrapProcessedOffset <= text.Length)
         {
-            if (line.Length == 0)
+            from = _wrapProcessedOffset;
+            for (var index = 0; index < folds.Count; index++)
             {
-                result.Add("");
+                var fold = folds[index];
+                if (index < _foldSnapshot.Count && _foldSnapshot[index] == (fold.Start, fold.End, fold.Collapsed))
+                    continue;
+                if (index >= _foldSnapshot.Count && !fold.Collapsed)
+                    continue;
+                from = Math.Min(from, BackToLineStart(text, fold.Start));
+            }
+        }
+        RebuildWrapFrom(text, folds, width, from);
+        SnapshotFolds(folds);
+        _wrapCacheWidth = width;
+    }
+
+    private void RebuildWrapFrom(string text, IReadOnlyList<TranscriptFold> folds, int width, int from)
+    {
+        var rows = _visualRows;
+        var wrapped = _wrapCacheLines ??= [];
+        var rowIndex = LowerBoundRow(rows, from);
+        var flatIndex = rowIndex < rows.Count ? rows[rowIndex].FlatStart : wrapped.Count;
+        if (rowIndex < rows.Count)
+            rows.RemoveRange(rowIndex, rows.Count - rowIndex);
+        wrapped.RemoveRange(flatIndex, wrapped.Count - flatIndex);
+
+        var position = from;
+        while (position < text.Length || IsTrailingLineStart(text, position))
+        {
+            var newline = text.IndexOf('\n', position);
+            var lineEnd = newline < 0 ? text.Length : newline;
+            var line = text[position..lineEnd];
+            if (line.EndsWith('\r'))
+                line = line[..^1];
+            var fold = FindCollapsedFold(folds, position);
+            if (fold is not null)
+            {
+                AddRow(position, fold.Preview, width);
+                position = fold.End > position ? fold.End : lineEnd + 1;
+                if (position >= text.Length && newline < 0)
+                    break;
                 continue;
             }
+            AddRow(position, line, width);
+            if (newline < 0)
+                break;
+            position = lineEnd + 1;
+        }
+        _wrapProcessedOffset = text.LastIndexOf('\n') + 1;
+    }
 
-            var start = 0;
-            var column = 0;
-            for (var index = 0; index < line.Length; index++)
-            {
-                var characterWidth = TerminalTextWidth.Of(line[index]);
-                if (column + characterWidth > width)
-                {
-                    result.Add(line[start..index]);
-                    start = index;
-                    column = 0;
-                }
+    private static bool IsTrailingLineStart(string text, int position)
+        => position == text.Length && position > 0 && text[position - 1] == '\n';
 
-                column += characterWidth;
-            }
+    private static TranscriptFold? FindCollapsedFold(IReadOnlyList<TranscriptFold> folds, int position)
+    {
+        foreach (var fold in folds)
+        {
+            if (fold.Collapsed && fold.Start <= position && position < fold.End)
+                return fold;
+        }
+        return null;
+    }
 
-            result.Add(line[start..]);
+    private static int LowerBoundRow(List<VisualRow> rows, int sourceStart)
+    {
+        var low = 0;
+        var high = rows.Count;
+        while (low < high)
+        {
+            var middle = (low + high) / 2;
+            if (rows[middle].SourceStart < sourceStart)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        return low;
+    }
+
+    private static int BackToLineStart(string text, int offset)
+    {
+        if (offset <= 0)
+            return 0;
+        var newline = text.LastIndexOf('\n', offset - 1);
+        return newline < 0 ? 0 : newline + 1;
+    }
+
+    private void AddRow(int sourceStart, string content, int width)
+    {
+        var probe = new List<string>();
+        WrapSingleLine(content, width, probe);
+        _visualRows.Add(new VisualRow { SourceStart = sourceStart, FlatStart = _wrapCacheLines!.Count, Lines = [.. probe] });
+        _wrapCacheLines.AddRange(probe);
+    }
+
+    private void SnapshotFolds(IReadOnlyList<TranscriptFold> folds)
+    {
+        _foldSnapshot.Clear();
+        foreach (var fold in folds)
+            _foldSnapshot.Add((fold.Start, fold.End, fold.Collapsed));
+    }
+
+    private static void WrapSingleLine(string line, int width, List<string> output)
+    {
+        if (line.Length == 0)
+        {
+            output.Add("");
+            return;
         }
 
-        return result;
+        var start = 0;
+        var column = 0;
+        for (var index = 0; index < line.Length; index++)
+        {
+            var characterWidth = TerminalTextWidth.Of(line[index]);
+            if (column + characterWidth > width)
+            {
+                output.Add(line[start..index]);
+                start = index;
+                column = 0;
+            }
+
+            column += characterWidth;
+        }
+
+        output.Add(line[start..]);
     }
 }
