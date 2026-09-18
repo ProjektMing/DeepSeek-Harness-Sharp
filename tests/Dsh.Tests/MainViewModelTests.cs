@@ -41,6 +41,44 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task OpenSession_FromSettingsOrMarket_ReturnsToChatPage()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+        var node = viewModel.Workspaces.SelectMany(workspace => workspace.Sessions).First();
+
+        viewModel.ShowSettingsCommand.Execute(null);
+        Assert.True(viewModel.IsSettingsPage);
+        viewModel.OpenSessionCommand.Execute(node);
+        Assert.True(viewModel.IsChatPage);
+        Assert.Same(node, viewModel.SelectedSession);
+
+        viewModel.ShowMarketCommand.Execute(null);
+        Assert.True(viewModel.IsMarketPage);
+        viewModel.OpenSessionCommand.Execute(node);
+        Assert.True(viewModel.IsChatPage);
+    }
+
+    [Fact]
+    public async Task NewSession_FromSettingsPage_ReturnsToChatPage()
+    {
+        using var environment = await GuiTestEnvironment.CreateAsync();
+        using var viewModel = new MainViewModel(environment.App, environment.Agent);
+        viewModel.ShowSettingsCommand.Execute(null);
+
+        viewModel.NewSessionCommand.Execute(null);
+
+        for (var attempt = 0; attempt < 500 && viewModel.SelectedSession?.SessionId == environment.Agent.Id; attempt++)
+        {
+            await Task.Delay(5);
+            Dispatcher.UIThread.RunJobs();
+        }
+        Assert.True(viewModel.IsChatPage);
+        Assert.NotNull(viewModel.SelectedSession);
+        Assert.NotEqual(environment.Agent.Id, viewModel.SelectedSession!.SessionId);
+    }
+
+    [Fact]
     public async Task Sessions_GroupedByWorkspace_AndMarkCurrentSessionSelected()
     {
         using var environment = await GuiTestEnvironment.CreateAsync();

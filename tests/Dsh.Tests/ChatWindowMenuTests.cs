@@ -86,6 +86,51 @@ public class ChatWindowMenuTests : IDisposable
     }
 
     [Fact]
+    public async Task Gpu_Lists_Adapters_And_Persists_Selection()
+    {
+        using var chat = await CreateChat();
+
+        Type(chat, "/gpu");
+        Press(chat, ConsoleKey.Enter);
+        await Task.Delay(300);
+        chat.DrainUi();
+
+        var frame = DrawFrame(chat);
+        Assert.Contains("gpu: current = auto (system default)", frame);
+        Assert.Contains("usage: /gpu <number>", frame);
+
+        // 无显卡环境(纯 CI)只验证列表分支; 有卡环境继续验证选卡落盘。
+        var adapters = GpuCatalog.ListAdapters();
+        if (adapters.Count == 0)
+            return;
+
+        Type(chat, "/gpu 1");
+        Press(chat, ConsoleKey.Enter);
+        await Task.Delay(300);
+        chat.DrainUi();
+
+        frame = DrawFrame(chat);
+        Assert.Contains($"gpu: selected {adapters[0].Name}", frame);
+        // 与 GUI 设置页读同一个键(plugins.@deepseek-ai/dsh-gui 的 gpu.adapter)。
+        Assert.Equal(adapters[0].Name, GpuCatalog.LoadSelectedAdapter(HarnessHome.Resolve(_homeDir)));
+    }
+
+    [Fact]
+    public async Task Gpu_Rejects_Invalid_Selection()
+    {
+        using var chat = await CreateChat();
+
+        Type(chat, "/gpu 999");
+        Press(chat, ConsoleKey.Enter);
+        await Task.Delay(300);
+        chat.DrainUi();
+
+        var frame = DrawFrame(chat);
+        Assert.Contains("gpu: invalid selection '999'", frame);
+        Assert.Equal(GpuCatalog.AutoAdapter, GpuCatalog.LoadSelectedAdapter(HarnessHome.Resolve(_homeDir)));
+    }
+
+    [Fact]
     public async Task CtrlC_Twice_Requests_Exit_With_Status_Hint()
     {
         using var chat = await CreateChat();

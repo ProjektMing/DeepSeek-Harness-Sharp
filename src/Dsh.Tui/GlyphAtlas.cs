@@ -10,20 +10,22 @@ public readonly record struct GlyphUv(float MinX, float MinY, float MaxX, float 
 
 public sealed class GlyphAtlas
 {
-    public const int GlyphWidth = 16;
-    public const int GlyphHeight = 20;
+    // 默认值对齐 Rider 终端(JediTerm, JetBrains Mono 13pt@96dpi): 格 = charWidth('W') 10px × 行高 16px, 字身 17.33px。
+    public const int DefaultGlyphWidth = 10;
+    public const int DefaultGlyphHeight = 16;
+    public const float DefaultFontSize = 17.333f;
+    /** 默认字号(磅): 即 Rider/JetBrains IDE 终端的默认字号。 */
+    public const double DefaultFontSizePt = 13;
     public const int Columns = 128;
     public const int Rows = 64;
     public const int Capacity = Columns * Rows;
 
-    private const float FontSize = 15f;
     private const string CacheMagic = "DSHGLYF1";
 
     private static readonly Lazy<GlyphAtlas> SharedInstance = new(() => new GlyphAtlas());
-    private static readonly Lazy<Font> SharedFont = new(ResolveFont);
+    private static readonly Lazy<FontFamily> SharedFamily = new(ResolveFontFamily);
     private static readonly object FallbackGate = new();
     private static IReadOnlyList<FontFamily> _fallbackFamilies = ResolveFallbackFamilies();
-    private static readonly Lazy<float> SharedOffsetY = new(() => MeasureVerticalOffset(CreateOptions()));
 
     public static GlyphAtlas Shared => SharedInstance.Value;
 
@@ -34,12 +36,21 @@ public sealed class GlyphAtlas
     private readonly char[] _slotChars = new char[Capacity];
     private readonly long[] _slotTicks = new long[Capacity];
     private readonly GlyphUv[] _uvs = BuildUvs();
-    private readonly byte[] _textureData = new byte[Columns * GlyphWidth * Rows * GlyphHeight];
+    private readonly byte[] _textureData;
     private readonly List<int> _dirtySlots = [];
     private readonly string _cachePath;
+    private readonly float _fontSize;
+    private readonly Font _font;
+    private readonly Lazy<float> _offsetY;
     private int _nextSlot;
     private bool _cacheDirty;
     private long _accessCounter;
+
+    /** 字形槽像素宽(默认 16, 随字号缩放)。 */
+    public int GlyphWidth { get; }
+
+    /** 字形槽像素高(默认 20, 随字号缩放)。 */
+    public int GlyphHeight { get; }
 
     public int MapVersion { get; private set; }
 
@@ -66,9 +77,19 @@ public sealed class GlyphAtlas
             BakeSlow(character);
     }
 
-    public GlyphAtlas(string? cachePath = null)
+    /** fontSizePt 为字号(磅, 默认 13pt = 10x16 格/17.33px 字身, 对齐 Rider 终端)。缓存按格尺寸分文件, 互不污染。 */
+    public GlyphAtlas(string? cachePath = null, double fontSizePt = DefaultFontSizePt)
     {
-        _cachePath = cachePath ?? DefaultCachePath();
+        if (!double.IsFinite(fontSizePt) || fontSizePt <= 0)
+            fontSizePt = DefaultFontSizePt;
+        var ratio = fontSizePt / DefaultFontSizePt;
+        GlyphWidth = Math.Max(4, (int)Math.Round(DefaultGlyphWidth * ratio));
+        GlyphHeight = Math.Max(5, (int)Math.Round(DefaultGlyphHeight * ratio));
+        _fontSize = DefaultFontSize * (float)ratio;
+        _font = SharedFamily.Value.CreateFont(_fontSize);
+        _offsetY = new Lazy<float>(() => MeasureVerticalOffset(CreateOptions()));
+        _textureData = new byte[Columns * GlyphWidth * Rows * GlyphHeight];
+        _cachePath = cachePath ?? DefaultCachePath(fontSizePt);
         LoadCache();
     }
 
@@ -149,13 +170,12 @@ public sealed class GlyphAtlas
             using (var writer = new BinaryWriter(stream))
             {
                 writer.Write(CacheMagic);
-                var fontName = SharedFont.Value.Family.Name;
-                writer.Write(fontName);
+                writer.Write(SharedFamily.Value.Name);
                 writer.Write(GlyphWidth);
                 writer.Write(GlyphHeight);
                 writer.Write(Columns);
                 writer.Write(Rows);
-                writer.Write(FontSize);
+                writer.Write(_fontSize);
                 writer.Write(entries.Count);
                 foreach (var (character, slot) in entries)
                 {
@@ -219,7 +239,7 @@ public sealed class GlyphAtlas
         using (var canvas = image.Frames.RootFrame.CreateCanvas(Configuration.Default, new DrawingOptions()))
         {
             var options = CreateOptions();
-            options.Origin = new PointF(0, SharedOffsetY.Value);
+            options.Origin = new PointF(0, _offsetY.Value);
             BakeGlyphs(canvas, character, options);
         }
 
@@ -247,12 +267,12 @@ public sealed class GlyphAtlas
             if (reader.ReadString() != CacheMagic)
                 return;
             var fontName = reader.ReadString();
-            if (fontName != SharedFont.Value.Family.Name
+            if (fontName != SharedFamily.Value.Name
                 || reader.ReadInt32() != GlyphWidth
                 || reader.ReadInt32() != GlyphHeight
                 || reader.ReadInt32() != Columns
                 || reader.ReadInt32() != Rows
-                || Math.Abs(reader.ReadSingle() - FontSize) > 0.001f)
+                || Math.Abs(reader.ReadSingle() - _fontSize) > 0.001f)
                 return;
             var count = reader.ReadInt32();
             if (count <= 0 || count > Capacity)
@@ -319,7 +339,7 @@ public sealed class GlyphAtlas
         return uvs;
     }
 
-    private static void BakeGlyphs(DrawingCanvas canvas, char character, TextOptions options)
+    private void BakeGlyphs(DrawingCanvas canvas, char character, TextOptions options)
     {
         var text = character.ToString();
         if (TryBakeGlyphs(canvas, text, options))
@@ -329,7 +349,7 @@ public sealed class GlyphAtlas
         TryBakeGlyphs(canvas, text, retry);
     }
 
-    private static bool TryBakeGlyphs(DrawingCanvas canvas, string text, TextOptions options)
+    private bool TryBakeGlyphs(DrawingCanvas canvas, string text, TextOptions options)
     {
         try
         {
@@ -347,7 +367,7 @@ public sealed class GlyphAtlas
         }
     }
 
-    private static bool RepairFallbacks(char character)
+    private bool RepairFallbacks(char character)
     {
         lock (FallbackGate)
         {
@@ -360,11 +380,11 @@ public sealed class GlyphAtlas
         }
     }
 
-    private static bool CanRenderWith(FontFamily family, char character)
+    private bool CanRenderWith(FontFamily family, char character)
     {
         try
         {
-            return TextBuilder.GenerateGlyphs(character.ToString(), new TextOptions(family.CreateFont(FontSize))).Count > 0;
+            return TextBuilder.GenerateGlyphs(character.ToString(), new TextOptions(family.CreateFont(_fontSize))).Count > 0;
         }
         catch (Exception)
         {
@@ -374,16 +394,21 @@ public sealed class GlyphAtlas
 
     private static IReadOnlyList<FontFamily> FallbackFamilies => Volatile.Read(ref _fallbackFamilies);
 
-    private static TextOptions CreateOptions()
-        => new(SharedFont.Value)
+    private TextOptions CreateOptions()
+        => new(_font)
         {
             FallbackFontFamilies = FallbackFamilies,
         };
 
-    private static string DefaultCachePath()
-        => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "cache", "glyph-atlas.bin");
+    private static string DefaultCachePath(double fontSizePt)
+    {
+        var name = Math.Abs(fontSizePt - DefaultFontSizePt) < 1e-9
+            ? "glyph-atlas.bin"
+            : $"glyph-atlas-{fontSizePt}pt.bin";
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "cache", name);
+    }
 
-    private static float MeasureVerticalOffset(TextOptions options)
+    private float MeasureVerticalOffset(TextOptions options)
     {
         var probe = TextBuilder.GenerateGlyphs("Hg中", options);
         if (probe.Count == 0)
@@ -431,8 +456,8 @@ public sealed class GlyphAtlas
     {
         try
         {
-            _ = TextBuilder.GenerateGlyphs("a", new TextOptions(family.CreateFont(FontSize)));
-            _ = TextBuilder.GenerateGlyphs("😀", new TextOptions(family.CreateFont(FontSize)));
+            _ = TextBuilder.GenerateGlyphs("a", new TextOptions(family.CreateFont(DefaultFontSize)));
+            _ = TextBuilder.GenerateGlyphs("😀", new TextOptions(family.CreateFont(DefaultFontSize)));
             return true;
         }
         catch (Exception)
@@ -441,7 +466,7 @@ public sealed class GlyphAtlas
         }
     }
 
-    private static Font ResolveFont()
+    private static FontFamily ResolveFontFamily()
     {
         string[] preferredNames =
         [
@@ -462,7 +487,7 @@ public sealed class GlyphAtlas
         foreach (var name in preferredNames)
         {
             if (SystemFonts.TryGet(name, out var family))
-                return family.CreateFont(FontSize);
+                return family;
         }
 
         foreach (var family in SystemFonts.Families)
@@ -471,11 +496,10 @@ public sealed class GlyphAtlas
                 family.Name.Contains("Console", StringComparison.OrdinalIgnoreCase) ||
                 family.Name.Contains("CJK", StringComparison.OrdinalIgnoreCase))
             {
-                return family.CreateFont(FontSize);
+                return family;
             }
         }
 
-        var fallbackName = SystemFonts.GetDefaultFamilyName();
-        return SystemFonts.CreateFont(fallbackName, FontSize);
+        return SystemFonts.Get(SystemFonts.GetDefaultFamilyName());
     }
 }

@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
@@ -14,7 +13,6 @@ using Dsh.Llm;
 using Dsh.Runtime;
 using Dsh.Runtime.Events;
 using LlmTextBlock = Dsh.Llm.TextBlock;
-using PersistencePlugin = Dsh.Persistence.Plugin;
 
 namespace Dsh.Gui.ViewModels;
 
@@ -333,8 +331,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenSession(SessionNodeViewModel? node)
     {
-        if (node is not null)
-            SelectedSession = node;
+        if (node is null)
+            return;
+        Page = AppPage.Chat;
+        SelectedSession = node;
     }
 
     [RelayCommand]
@@ -873,6 +873,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         TraceItems.Clear();
         TraceView.Clear();
         _lastUserMessages.Clear();
+        Page = AppPage.Chat;
         SessionTitle = agent.Session.Header.Title ?? agent.Id.Value;
         SessionSubtitle = ModelLabel(agent);
         ApplyEvents(agent.Session.SnapshotEvents());
@@ -1235,15 +1236,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     };
 
     private static string ContentText(IReadOnlyList<ContentBlock> blocks)
-        => string.Join('\n', blocks.Select(block => block switch
-        {
-            LlmTextBlock text => text.Text,
-            ReasoningBlock reasoning => $"[reasoning] {reasoning.Text}",
-            ToolCallBlock call => $"[tool: {call.Name}] {call.Arguments}",
-            ToolResultBlock result => ContentText(result.Content),
-            ImageBlock => "[image]",
-            _ => $"[{block.Type}]",
-        }));
+        => MessageText.Flatten(blocks);
 
     /** 思考内容已由流式增量渲染, 最终消息只取正文, 避免重复。 */
     private static string AssistantText(IReadOnlyList<ContentBlock> blocks)

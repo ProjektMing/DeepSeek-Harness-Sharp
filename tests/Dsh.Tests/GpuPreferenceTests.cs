@@ -1,4 +1,6 @@
 using Dsh.Gui.Services;
+using Dsh.Tui;
+using GpuAdapterInfo = Dsh.Tui.GpuAdapterInfo;
 
 namespace Dsh.Tests;
 
@@ -29,9 +31,9 @@ public sealed class GpuPreferenceTests
     [Fact]
     public void ParseLinuxUevent_ReadsDriverVendorAndSlot()
     {
-        var amd = GpuPreference.ParseLinuxUevent(AmdUevent);
-        var nvidia = GpuPreference.ParseLinuxUevent(NvidiaUevent);
-        var virtio = GpuPreference.ParseLinuxUevent(VirtioUevent);
+        var amd = GpuCatalog.ParseLinuxUevent(AmdUevent);
+        var nvidia = GpuCatalog.ParseLinuxUevent(NvidiaUevent);
+        var virtio = GpuCatalog.ParseLinuxUevent(VirtioUevent);
 
         Assert.NotNull(amd);
         Assert.Equal("AMD", amd.Vendor);
@@ -50,9 +52,9 @@ public sealed class GpuPreferenceTests
     [Fact]
     public void ParseLinuxUevent_ReturnsNull_WithoutDriverOrPciId()
     {
-        Assert.Null(GpuPreference.ParseLinuxUevent("DRIVER=amdgpu\n"));
-        Assert.Null(GpuPreference.ParseLinuxUevent("PCI_ID=1002:15BF\n"));
-        Assert.Null(GpuPreference.ParseLinuxUevent(""));
+        Assert.Null(GpuCatalog.ParseLinuxUevent("DRIVER=amdgpu\n"));
+        Assert.Null(GpuCatalog.ParseLinuxUevent("PCI_ID=1002:15BF\n"));
+        Assert.Null(GpuCatalog.ParseLinuxUevent(""));
     }
 
     [Fact]
@@ -60,15 +62,27 @@ public sealed class GpuPreferenceTests
     {
         string[] candidates = ["AMD Radeon 780M Graphics", "NVIDIA GeForce RTX 4060 Laptop GPU"];
 
-        Assert.Equal(0, GpuPreference.MatchAdapterIndex(candidates, GpuPreference.AutoAdapter));
-        Assert.Equal(0, GpuPreference.MatchAdapterIndex(candidates, "AMD Radeon 780M"));
-        Assert.Equal(1, GpuPreference.MatchAdapterIndex(candidates, "NVIDIA GeForce RTX 4060 Laptop GPU"));
-        Assert.Equal(1, GpuPreference.MatchAdapterIndex(candidates, "RTX 4060"));
+        Assert.Equal(0, GpuCatalog.MatchAdapterIndex(candidates, GpuCatalog.AutoAdapter));
+        Assert.Equal(0, GpuCatalog.MatchAdapterIndex(candidates, "AMD Radeon 780M"));
+        Assert.Equal(1, GpuCatalog.MatchAdapterIndex(candidates, "NVIDIA GeForce RTX 4060 Laptop GPU"));
+        Assert.Equal(1, GpuCatalog.MatchAdapterIndex(candidates, "RTX 4060"));
         // Avalonia 只报部分名字时也能反向匹配上。
-        Assert.Equal(1, GpuPreference.MatchAdapterIndex(["Intel", "4060"], "NVIDIA GeForce RTX 4060 Laptop GPU"));
+        Assert.Equal(1, GpuCatalog.MatchAdapterIndex(["Intel", "4060"], "NVIDIA GeForce RTX 4060 Laptop GPU"));
         // 完全匹配不到时退回默认卡, 不抛异常。
-        Assert.Equal(0, GpuPreference.MatchAdapterIndex(candidates, "Intel Arc B580"));
-        Assert.Equal(0, GpuPreference.MatchAdapterIndex([], "NVIDIA"));
+        Assert.Equal(0, GpuCatalog.MatchAdapterIndex(candidates, "Intel Arc B580"));
+        Assert.Equal(0, GpuCatalog.MatchAdapterIndex([], "NVIDIA"));
+    }
+
+    [Fact]
+    public void IsDiscrete_ClassifiesByUmaFlag()
+    {
+        Assert.True(GpuCatalog.IsDiscrete(new GpuAdapterInfo("0001", "NVIDIA GeForce RTX 4060", "NVIDIA", "", false)));
+        Assert.True(GpuCatalog.IsDiscrete(new GpuAdapterInfo("0002", "AMD Radeon RX 7900 XTX", "AMD", "", false)));
+        Assert.False(GpuCatalog.IsDiscrete(new GpuAdapterInfo("0000", "AMD Radeon 780M Graphics", "AMD", "", true)));
+        Assert.False(GpuCatalog.IsDiscrete(new GpuAdapterInfo("0003", "Intel UHD Graphics 770", "Intel", "", true)));
+        // 架构位未知时回退: NVIDIA 桌面卡判独显, 其余保守判核显。
+        Assert.True(GpuCatalog.IsDiscrete(new GpuAdapterInfo("0004", "NVIDIA 显卡", "NVIDIA", "", null)));
+        Assert.False(GpuCatalog.IsDiscrete(new GpuAdapterInfo("0005", "未知显卡", "未知", "", null)));
     }
 
     [Fact]
@@ -85,11 +99,14 @@ public sealed class GpuPreferenceTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        var adapters = GpuPreference.ListAdapters();
+        var adapters = GpuCatalog.ListAdapters();
 
         Assert.NotEmpty(adapters);
         Assert.Contains(adapters, adapter => adapter.Vendor == "AMD");
         Assert.Contains(adapters, adapter => adapter.Vendor == "NVIDIA");
         Assert.DoesNotContain(adapters, adapter => adapter.Name.Contains("Virtual Display", StringComparison.OrdinalIgnoreCase));
+        // 本机架构位: 780M 核显共享内存(UMA), RTX 4060 独显自带显存(非 UMA)。NVIDIA 驱动处于 Code 43 错误态时 DXGI 不枚举、架构位为 null(该状态曾在 2026-09-17 真实发生), 此时此断言会失败。
+        Assert.True(adapters.First(adapter => adapter.Vendor == "AMD").IsUma);
+        Assert.False(adapters.First(adapter => adapter.Vendor == "NVIDIA").IsUma);
     }
 }

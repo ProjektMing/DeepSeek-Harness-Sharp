@@ -11,14 +11,26 @@ public sealed class TranscriptRenderer
 
     private readonly StringBuilder _buffer = new();
     private readonly List<TranscriptFold> _folds = [];
-    private string? _cachedFullText;
+    private readonly List<string> _lines = [];
+    private readonly List<int> _lineStarts = [];
+    private readonly StringBuilder _tail = new();
+    private int _tailStart;
     private bool _reasoningOpen;
     private bool _assistantOpen;
+    private bool _assistantStreamed;
     private int _reasoningFoldStart;
     private int? _codeFenceStart;
     private string? _codeFenceKind;
 
-    public string FullText => _cachedFullText ??= _buffer.ToString();
+    /** 已完成行(不含换行符)与每行在全文中的起始偏移, 随 Append 增量维护; 供 wrap 缓存免物化全文。UI 线程亲和, 与 Version 同一时序读取。 */
+    public IReadOnlyList<string> CompletedLines => _lines;
+
+    public IReadOnlyList<int> LineStarts => _lineStarts;
+
+    /** 未完成行(最后一段, 可能为空字符串); TailStart 是它的全文偏移。 */
+    public string Tail => _tail.ToString();
+
+    public int TailStart => _tailStart;
 
     public int Version { get; private set; }
 
@@ -27,7 +39,6 @@ public sealed class TranscriptRenderer
     public void BumpVersion()
     {
         Version++;
-        _cachedFullText = null;
     }
 
     public void AppendRaw(string text) => Append(text);
@@ -38,21 +49,29 @@ public sealed class TranscriptRenderer
         Append($"\n❯ {text}\n");
     }
 
-    public void AppendSessionEvent(SessionEvent sessionEvent)
+    /** replay=true 用于会话切换后的历史回放: 用户消息平时由输入回显渲染, 只在回放时从事件补渲染。 */
+    public void AppendSessionEvent(SessionEvent sessionEvent, bool replay = false)
     {
         switch (sessionEvent.Data)
         {
+            case UserMessagePayload user when replay && user.Message.Source is UserMessageSource:
+                AppendUserMessage(user.Message);
+                break;
             case AssistantChunkPayload chunk:
                 AppendChunk(chunk.Chunk);
+                break;
+            case AssistantMessagePayload assistant:
+                AppendFinalAssistant(assistant.Message);
                 break;
             case ToolCallPayload call:
                 CloseReasoning();
                 CloseAssistant();
+                _assistantStreamed = false;
                 Append($"⚙ {call.Name} {Preview(call.Arguments, ToolArgumentsPreviewChars)}\n");
                 break;
             case ToolResultPayload result:
             {
-                var text = string.Concat(result.Message.Content.OfType<TextBlock>().Select(block => block.Text));
+                var text = MessageText.Flatten(result.Message.Content);
                 var label = result.Error is not null ? $"✗ {result.Error.Code} " : "↳ ";
                 var start = _buffer.Length;
                 Append($"  {label}{text}\n");
@@ -66,12 +85,31 @@ public sealed class TranscriptRenderer
                 break;
             }
             case TurnEndPayload { Reason: TurnEndReason.Error error }:
+                _assistantStreamed = false;
                 Append($"  ✗ turn failed: {error.Failure.Code}: {error.Failure.Message}\n");
                 break;
             case TurnEndPayload:
+                _assistantStreamed = false;
                 Append("\n");
                 break;
         }
+    }
+
+    /** 助手最终消息只在没有任何流式文本时补渲染(非流式适配器), 否则正文已由 chunk 渲染过。 */
+    private void AppendFinalAssistant(Message message)
+    {
+        if (_assistantStreamed)
+        {
+            _assistantStreamed = false;
+            return;
+        }
+        var text = string.Concat(message.Content.OfType<TextBlock>().Select(block => block.Text));
+        if (text.Length == 0)
+            return;
+        CloseReasoning();
+        OpenAssistant();
+        AppendCodeFenceAware(text);
+        CloseAssistant();
     }
 
     private void AppendChunk(StreamChunk chunk)
@@ -96,6 +134,7 @@ public sealed class TranscriptRenderer
             case StreamChunk.TextDelta text:
                 CloseReasoning();
                 OpenAssistant();
+                _assistantStreamed = true;
                 AppendCodeFenceAware(text.Text);
                 break;
             case StreamChunk.BlockEnd { Block: TextBlock }:
@@ -205,8 +244,31 @@ public sealed class TranscriptRenderer
     {
         lock (_buffer)
         {
+            var baseOffset = _buffer.Length;
             _buffer.Append(text);
+            UpdateLines(text, baseOffset);
             BumpVersion();
+        }
+    }
+
+    /** 把新追加的文本增量并入行列表: 完整行落定到 _lines, 末尾不足一行留在 _tail。 */
+    private void UpdateLines(string text, int baseOffset)
+    {
+        var position = 0;
+        while (position < text.Length)
+        {
+            var newline = text.IndexOf('\n', position);
+            if (newline < 0)
+            {
+                _tail.Append(text.AsSpan(position));
+                break;
+            }
+            _tail.Append(text.AsSpan(position, newline - position));
+            _lines.Add(_tail.ToString());
+            _lineStarts.Add(_tailStart);
+            _tail.Clear();
+            _tailStart = baseOffset + newline + 1;
+            position = newline + 1;
         }
     }
 }

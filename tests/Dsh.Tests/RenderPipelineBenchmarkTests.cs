@@ -1,43 +1,56 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using Dsh.Tui;
 using OpenTK.Graphics.OpenGL;
+using Egl = OpenTK.Graphics.Egl.Egl;
+using GLFW = OpenTK.Windowing.GraphicsLibraryFramework.GLFW;
 
 namespace Dsh.Tests;
 
+/**
+ * 渲染管线全档压测(1080p→5K 各 1000 帧)。
+ * 已知限制: AMD 核显 + Windows Mesa/D3D12 栈在持续高负载下可能触发驱动 TDR(超时检测恢复)并连带崩掉 testhost——
+ * 这是 AMD 驱动的既有问题, 不是本项目代码缺陷; 在该平台上撞到 TDR 时重跑即可, 或用 --filter "Category!=GpuStress" 把本类排除。
+ */
 [Collection("RenderBench")]
 public class RenderPipelineBenchmarkTests
 {
     private const int CorpusLines = 4000;
     private const int SparseRowsPerFrame = 6;
     private const int Seed = 20260916;
-    private const int CellPixelWidth = 16;
-    private const int CellPixelHeight = 20;
+    /** 格像素尺寸跟随图集默认值(字号默认档), 使各档 viewport 与真实渲染一致。 */
+    private const int CellPixelWidth = GlyphAtlas.DefaultGlyphWidth;
+    private const int CellPixelHeight = GlyphAtlas.DefaultGlyphHeight;
 
     private static readonly (int Width, int Height, string Label, int Frames)[] Tiers =
     [
-        (240, 67, "1920x1080 @10pt", 1000),
-        (320, 90, "2560x1440 @10pt", 1000),
-        (480, 135, "3840x2160 @10pt", 1000),
-        (640, 180, "5120x2880 @10pt", 1000),
+        (240, 67, "240x67 格", 1000),
+        (320, 90, "320x90 格", 1000),
+        (480, 135, "480x135 格", 1000),
+        (640, 180, "640x180 格", 1000),
     ];
 
     [Fact]
+    [Trait("Category", "GpuStress")]
     public void Render_Pipeline_Benchmark()
     {
-        using var egl = HeadlessEgl.Create(Tiers[^1].Width * CellPixelWidth, Tiers[^1].Height * CellPixelHeight);
+        using var egl = HeadlessGl.Create(Tiers[^1].Width * CellPixelWidth, Tiers[^1].Height * CellPixelHeight);
         var atlas = GlyphAtlas.Shared;
         atlas.Prewarm();
         var core = new GpuRenderCore();
         core.Initialize(atlas);
 
         var lines = MarkdownCorpus.Build(CorpusLines, Tiers[^1].Width, Seed);
+
         var stats = GpuStatQueries.TryCreate();
         var report = new StringBuilder();
         report.AppendLine("# 渲染管线四阶段压测(帧数据构建 / GL 上传 / GPU 光栅化 / 终端解析)");
         report.AppendLine();
-        report.AppendLine($"GL 环境: 无头 EGL(平台设备直出), {GL.GetString(StringName.Renderer)}, {GL.GetString(StringName.Version)}。帧缓冲为 pbuffer,无交换;光栅化用 GL.Finish 收束。GPU 计数器: {(stats is null ? "驱动不支持 ARB_pipeline_statistics,仅 GL_TIME_ELAPSED" : "ARB_pipeline_statistics + GL_TIME_ELAPSED(query 读数在 Finish 后取回)")}。");
+        report.AppendLine($"GL 环境: {GL.GetString(StringName.Renderer)}, {GL.GetString(StringName.Version)}。光栅化用 GL.Finish 收束。GPU 计数器: {(stats is null ? "GPU 计时不可用" : stats.SupportsStats ? "ARB_pipeline_statistics + GL_TIME_ELAPSED(query 读数在 Finish 后取回)" : "仅 GL_TIME_ELAPSED(core 能力;ARB_pipeline_statistics 不支持)")}。MAX_TEXTURE_BUFFER_SIZE: {GL.GetInteger(GetPName.MaxTextureBufferSize)}。");
         report.AppendLine("阶段划分(每帧分别计时): 构建 = 脏行 diff + CellPacker.PackRows(打包与字形齐备检查融合单趟);上传 = GpuRenderCore.UploadCells(脏行切片);光栅化 = GpuRenderCore.RenderFrame + GL.Finish(含 GPU 排队执行);GPU 时间 = 同一 RenderFrame 的 GL_TIME_ELAPSED query(纯 GPU 执行,排除 CPU 提交开销)。语料: 合成 markdown。终端解析见 render-terminal-benchmark.md。");
+        report.AppendLine($"EGL 设备: {string.Join(" ; ", egl.EnumeratedDevices)}。");
+        WriteReport("render-pipeline-benchmark.md", report);
         report.AppendLine();
 
         foreach (var (width, height, label, frames) in Tiers)
@@ -86,6 +99,7 @@ public class RenderPipelineBenchmarkTests
                     report.AppendLine($"| C 计数器 | VS 调用 {m.VsInvocations.Average():N0} | 顶点提交 {m.Vertices.Average():N0} | 图元提交 {m.Primitives.Average():N0} | 图元生成 {m.PrimitivesGenerated.Average():N0} | | | |");
             }
             report.AppendLine();
+            WriteReport("render-pipeline-benchmark.md", report);
         }
 
         stats?.Dispose();
@@ -141,7 +155,7 @@ public class RenderPipelineBenchmarkTests
         }
         return new PipelineMeasurement(build, upload, raster, gpuNs, vertices, primitives, vsInvocations, primitivesGenerated);
     }
-
+    
     [Fact]
     public void Terminal_Parse_Benchmark()
     {
@@ -289,11 +303,20 @@ public class RenderPipelineBenchmarkTests
 
     private sealed class GpuStatQueries : IDisposable
     {
+        private const uint QueryResult = 0x8866;
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void GetQueryObjectui64VFn(uint id, uint pname, out ulong result);
+
+        private static GetQueryObjectui64VFn? _readQueryVolatile;
+
         private readonly int _timeQuery = GL.GenQuery();
         private readonly int _verticesQuery = GL.GenQuery();
         private readonly int _primitivesQuery = GL.GenQuery();
         private readonly int _vsInvocationsQuery = GL.GenQuery();
         private readonly int _primitivesGeneratedQuery = GL.GenQuery();
+        private bool _timeOk;
+        private bool _statsOk;
 
         public ulong ElapsedNs { get; private set; }
 
@@ -305,12 +328,20 @@ public class RenderPipelineBenchmarkTests
 
         public ulong PrimitivesGenerated { get; private set; }
 
+        public bool SupportsStats => _statsOk;
+
+        /** GL_TIME_ELAPSED 是 3.3 core 能力,ARB_pipeline_statistics 是 4.6 扩展, 分开探测(Mesa/D3D12 只支持前者)。探测前排空遗留错误标志, 否则第一个 GetError 读到的是上下文创建期的陈渣。 */
         public static GpuStatQueries? TryCreate()
         {
             var queries = new GpuStatQueries();
-            GL.BeginQuery(QueryTarget.VertexShaderInvocations, queries._vsInvocationsQuery);
-            GL.EndQuery(QueryTarget.VertexShaderInvocations);
-            if (GL.GetError() != ErrorCode.NoError)
+            while (GL.GetError() != ErrorCode.NoError) { }
+            GL.BeginQuery(QueryTarget.TimeElapsed, queries._timeQuery);
+            GL.EndQuery(QueryTarget.TimeElapsed);
+            queries._timeOk = GL.GetError() == ErrorCode.NoError;
+            GL.BeginQuery(QueryTarget.VerticesSubmitted, queries._verticesQuery);
+            GL.EndQuery(QueryTarget.VerticesSubmitted);
+            queries._statsOk = GL.GetError() == ErrorCode.NoError;
+            if (!queries._timeOk && !queries._statsOk)
             {
                 queries.Dispose();
                 return null;
@@ -320,7 +351,10 @@ public class RenderPipelineBenchmarkTests
 
         public void Begin()
         {
-            GL.BeginQuery(QueryTarget.TimeElapsed, _timeQuery);
+            if (_timeOk)
+                GL.BeginQuery(QueryTarget.TimeElapsed, _timeQuery);
+            if (!_statsOk)
+                return;
             GL.BeginQuery(QueryTarget.VerticesSubmitted, _verticesQuery);
             GL.BeginQuery(QueryTarget.PrimitivesSubmitted, _primitivesQuery);
             GL.BeginQuery(QueryTarget.VertexShaderInvocations, _vsInvocationsQuery);
@@ -329,7 +363,10 @@ public class RenderPipelineBenchmarkTests
 
         public void End()
         {
-            GL.EndQuery(QueryTarget.TimeElapsed);
+            if (_timeOk)
+                GL.EndQuery(QueryTarget.TimeElapsed);
+            if (!_statsOk)
+                return;
             GL.EndQuery(QueryTarget.VerticesSubmitted);
             GL.EndQuery(QueryTarget.PrimitivesSubmitted);
             GL.EndQuery(QueryTarget.VertexShaderInvocations);
@@ -338,11 +375,32 @@ public class RenderPipelineBenchmarkTests
 
         public void Collect()
         {
-            ElapsedNs = GL.GetQueryObjectui64(_timeQuery, QueryObjectParameterName.QueryResult);
+            if (_timeOk)
+                ElapsedNs = ReadElapsedNsManual();
+            if (!_statsOk)
+                return;
             Vertices = GL.GetQueryObjectui64(_verticesQuery, QueryObjectParameterName.QueryResult);
             Primitives = GL.GetQueryObjectui64(_primitivesQuery, QueryObjectParameterName.QueryResult);
             VsInvocations = GL.GetQueryObjectui64(_vsInvocationsQuery, QueryObjectParameterName.QueryResult);
             PrimitivesGenerated = GL.GetQueryObjectui64(_primitivesGeneratedQuery, QueryObjectParameterName.QueryResult);
+        }
+
+        /** OpenTK 绑定读 TIME_ELAPSED 恒 0(同一上下文中计数器 query 正常; NVIDIA WGL 与 Mesa 都复现), 直取函数指针读。 */
+        private ulong ReadElapsedNsManual()
+        {
+            var fn = _readQueryVolatile ??= ResolveQueryReader();
+            if (fn is null)
+                return 0;
+            fn((uint)_timeQuery, QueryResult, out var value);
+            return value;
+        }
+
+        private static GetQueryObjectui64VFn? ResolveQueryReader()
+        {
+            var pointer = GLFW.GetProcAddress("glGetQueryObjectui64v");
+            if (pointer == IntPtr.Zero)
+                pointer = Egl.GetProcAddress("glGetQueryObjectui64v");
+            return pointer == IntPtr.Zero ? null : Marshal.GetDelegateForFunctionPointer<GetQueryObjectui64VFn>(pointer);
         }
 
         public void Dispose()

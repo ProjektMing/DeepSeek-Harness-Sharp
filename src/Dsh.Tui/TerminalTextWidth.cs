@@ -7,6 +7,11 @@ public static class TerminalTextWidth
     public static int Of(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
+        return Of(text.AsSpan());
+    }
+
+    public static int Of(ReadOnlySpan<char> text)
+    {
         var width = 0;
         foreach (var character in text)
             width += Of(character);

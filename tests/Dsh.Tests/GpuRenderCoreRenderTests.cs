@@ -11,13 +11,13 @@ public class GpuRenderCoreRenderTests : IDisposable
     private const int GridW = 4;
     private const int GridH = 2;
 
-    private readonly HeadlessEgl _egl;
+    private readonly HeadlessGl _egl;
     private readonly GpuRenderCore _core;
     private readonly GlyphAtlas _atlas;
 
     public GpuRenderCoreRenderTests()
     {
-        _egl = HeadlessEgl.Create(GridW * CellW, GridH * CellH);
+        _egl = HeadlessGl.Create(GridW * CellW, GridH * CellH);
         _core = new GpuRenderCore();
         _atlas = GlyphAtlas.Shared;
         _core.Initialize(_atlas);

@@ -1,10 +1,10 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.RegularExpressions;
 using Dsh.Core;
 
-namespace Dsh.Gui.Services;
+namespace Dsh.Interaction;
 
-/** 审批弹窗的展示辅助: 从工具参数里挑出命令/路径这类主参数, 并给出粗粒度的影响提示。 */
+/** 审批提示的展示辅助: 从工具参数里挑出命令/路径这类主参数, 并给出粗粒度的影响提示。GUI 弹窗与 TUI 提示行共用。 */
 public static class ApprovalHints
 {
     private const int MaxArgumentChars = 400;

@@ -4,9 +4,6 @@ namespace Dsh.Tui;
 
 public sealed class GpuRenderCore : IDisposable
 {
-    private const int CellPixelWidth = 16;
-    private const int CellPixelHeight = 20;
-
     private readonly int[] _dirtySlots = new int[64];
     private int _unitVbo;
     private int _ebo;
@@ -85,8 +82,8 @@ public sealed class GpuRenderCore : IDisposable
         GL.Uniform4f(GL.GetUniformLocation(_shader, "uDefaultBackground"), 0f, 0f, 0f, 1f);
         GL.Uniform4f(GL.GetUniformLocation(_shader, "uDefaultForeground"), TerminalColorPalette.DefaultForeground.R, TerminalColorPalette.DefaultForeground.G, TerminalColorPalette.DefaultForeground.B, 1f);
         GL.Uniform2i(GL.GetUniformLocation(_shader, "uAtlasCells"), GlyphAtlas.Columns, GlyphAtlas.Rows);
-        GL.Uniform2i(GL.GetUniformLocation(_shader, "uAtlasPixels"), GlyphAtlas.Columns * GlyphAtlas.GlyphWidth, GlyphAtlas.Rows * GlyphAtlas.GlyphHeight);
-        GL.Uniform2i(GL.GetUniformLocation(_shader, "uCellPixels"), CellPixelWidth, CellPixelHeight);
+        GL.Uniform2i(GL.GetUniformLocation(_shader, "uAtlasPixels"), GlyphAtlas.Columns * atlas.GlyphWidth, GlyphAtlas.Rows * atlas.GlyphHeight);
+        GL.Uniform2i(GL.GetUniformLocation(_shader, "uCellPixels"), atlas.GlyphWidth, atlas.GlyphHeight);
         GL.Uniform1i(_atlasTextureLocation, 0);
         GL.Uniform1i(_cellsLocation, 1);
         GL.Uniform1i(_glyphMapLocation, 2);
@@ -180,15 +177,15 @@ public sealed class GpuRenderCore : IDisposable
             for (var index = 0; index < flushed; index++)
             {
                 var slot = _dirtySlots[index];
-                var slotX = (slot % GlyphAtlas.Columns) * GlyphAtlas.GlyphWidth;
-                var slotY = (slot / GlyphAtlas.Columns) * GlyphAtlas.GlyphHeight;
+                var slotX = (slot % GlyphAtlas.Columns) * atlas.GlyphWidth;
+                var slotY = (slot / GlyphAtlas.Columns) * atlas.GlyphHeight;
                 GL.TexSubImage2D(
                     TextureTarget.Texture2D,
                     0,
                     slotX,
                     slotY,
-                    GlyphAtlas.GlyphWidth,
-                    GlyphAtlas.GlyphHeight,
+                    atlas.GlyphWidth,
+                    atlas.GlyphHeight,
                     PixelFormat.Red,
                     PixelType.UnsignedByte,
                     ref atlas.TextureData[(slotY * atlas.AtlasWidth) + slotX]);
@@ -207,8 +204,8 @@ public sealed class GpuRenderCore : IDisposable
             TextureTarget.Texture2D,
             0,
             InternalFormat.R8,
-            GlyphAtlas.Columns * GlyphAtlas.GlyphWidth,
-            GlyphAtlas.Rows * GlyphAtlas.GlyphHeight,
+            GlyphAtlas.Columns * atlas.GlyphWidth,
+            GlyphAtlas.Rows * atlas.GlyphHeight,
             0,
             PixelFormat.Red,
             PixelType.UnsignedByte,

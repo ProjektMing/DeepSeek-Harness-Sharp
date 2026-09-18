@@ -10,13 +10,14 @@ namespace Dsh.Tui;
 
 public sealed class GpuRenderer : IDisposable
 {
-    private const int CellPixelWidth = 16;
-    private const int CellPixelHeight = 20;
+    /** TDR 重建上限: 60 秒内连续丢 3 次上下文说明驱动在反复复位, 放弃重建, 抛出后由 TuiRunner 回退 CPU 渲染。 */
+    private const int MaxRebuildAttempts = 3;
+    private static readonly TimeSpan RebuildInterval = TimeSpan.FromSeconds(60);
 
-    private readonly GlyphAtlas _atlas = GlyphAtlas.Shared;
+    private readonly GlyphAtlas _atlas;
     private readonly ChatWindow _chat;
-    private readonly GameWindow _window;
-    private readonly GpuRenderCore _core = new();
+    private GameWindow _window;
+    private GpuRenderCore _core = new();
     private CellGrid _grid;
     private UiLayout _layout;
     private CellGrid? _lastGrid;
@@ -26,6 +27,8 @@ public sealed class GpuRenderer : IDisposable
     private float _mouseX;
     private float _mouseY;
     private bool _disposed;
+    private bool _contextLost;
+    private readonly List<DateTime> _rebuilds = [];
     private readonly string? _screenshotPath = Environment.GetEnvironmentVariable("DSH_GPU_SCREENSHOT");
     private bool _screenshotTaken;
 
@@ -55,33 +58,88 @@ public sealed class GpuRenderer : IDisposable
         return dot < 0 ? value : value[..dot];
     }
 
-    public GpuRenderer(ChatWindow chat)
+    public GpuRenderer(ChatWindow chat, GlyphAtlas? atlas = null)
     {
         ArgumentNullException.ThrowIfNull(chat);
         _chat = chat;
+        _atlas = atlas ?? GlyphAtlas.Shared;
+        // OpenTK 的 GLFW"主线程"认定要求入口方法在调用栈上且非线程池线程; async Main 的续体不满足, 直接关掉该检查(GLFW 在 Windows/X11/Wayland 对调用线程无要求)。
+        GLFWProvider.CheckForMainThread = false;
+        RequestRobustnessOnAmd();
+        _window = CreateWindow();
+        HookEvents(_window);
+        _grid = new CellGrid(80, 25);
+        _layout = LayoutEngine.Calculate(_grid.Width, _grid.Height);
+    }
+
+    /** AMD 驱动在高负载下可能会 TDR(超时复位): 有 AMD 卡在场时请求 robust 上下文, TDR 后表现为 GL_CONTEXT_LOST 而非进程崩溃; 其他厂商不请求, 避免无谓开销。测试基建(HeadlessGl)也走这个函数。 */
+    public static void RequestRobustnessOnAmd()
+    {
+        if (!GpuCatalog.ListAdapters().Any(adapter => adapter.Vendor.Equals("AMD", StringComparison.OrdinalIgnoreCase)))
+            return;
+        GLFWProvider.EnsureInitialized();
+        GLFW.WindowHint(WindowHintRobustness.ContextRobustness, Robustness.LoseContextOnReset);
+    }
+
+    private GameWindow CreateWindow()
+    {
         var settings = new NativeWindowSettings
         {
-            ClientSize = new Vector2i(80 * CellPixelWidth, 25 * CellPixelHeight),
+            ClientSize = new Vector2i(80 * _atlas.GlyphWidth, 25 * _atlas.GlyphHeight),
             Title = "dsh --gpu",
             API = ContextAPI.OpenGL,
             Profile = ContextProfile.Core,
             APIVersion = new Version(3, 3),
         };
-        _window = new GameWindow(GameWindowSettings.Default, settings);
-        _grid = new CellGrid(80, 25);
-        _layout = LayoutEngine.Calculate(_grid.Width, _grid.Height);
-        _window.Load += OnLoad;
-        _window.Resize += OnResize;
-        _window.RenderFrame += OnRenderFrame;
-        _window.KeyDown += OnKeyDown;
-        _window.TextInput += OnTextInput;
-        _window.MouseMove += OnMouseMove;
-        _window.MouseDown += OnMouseDown;
-        _window.MouseWheel += OnMouseWheel;
+        return new GameWindow(GameWindowSettings.Default, settings);
     }
 
+    private void HookEvents(GameWindow window)
+    {
+        window.Load += OnLoad;
+        window.Resize += OnResize;
+        window.RenderFrame += OnRenderFrame;
+        window.KeyDown += OnKeyDown;
+        window.TextInput += OnTextInput;
+        window.MouseMove += OnMouseMove;
+        window.MouseDown += OnMouseDown;
+        window.MouseWheel += OnMouseWheel;
+    }
+
+    /** 主循环: 窗口因 TDR 上下文丢失而关闭时重建窗口与 GL 资源再续跑; 用户退出则直接返回。 */
     public void Run()
-        => _window.Run();
+    {
+        while (true)
+        {
+            _contextLost = false;
+            _window.Run();
+            if (!_contextLost)
+                return;
+            RegisterRebuild();
+            RebuildWindow();
+        }
+    }
+
+    private void RegisterRebuild()
+    {
+        var now = DateTime.UtcNow;
+        _rebuilds.RemoveAll(at => now - at > RebuildInterval);
+        _rebuilds.Add(now);
+        if (_rebuilds.Count > MaxRebuildAttempts)
+            throw new InvalidOperationException($"GPU context lost {MaxRebuildAttempts} times within {RebuildInterval.TotalSeconds:F0}s (driver reset); giving up GPU rendering");
+    }
+
+    /** GL 对象不跨上下文共享: 换窗口即全部重建, 网格状态清空触发整屏重绘。 */
+    private void RebuildWindow()
+    {
+        _window.Dispose();
+        _core.Dispose();
+        _core = new GpuRenderCore();
+        _lastGrid = null;
+        _seenRenderVersion = -1;
+        _window = CreateWindow();
+        HookEvents(_window);
+    }
 
     public void Dispose()
     {
@@ -96,6 +154,7 @@ public sealed class GpuRenderer : IDisposable
     private void OnLoad()
     {
         _core.Initialize(_atlas);
+        Console.Error.WriteLine($"gpu renderer: {GL.GetString(StringName.Renderer)} ({GL.GetString(StringName.Version)})");
     }
 
     private void OnResize(ResizeEventArgs e)
@@ -104,8 +163,8 @@ public sealed class GpuRenderer : IDisposable
         var width = Math.Max(1, framebufferSize.X);
         var height = Math.Max(1, framebufferSize.Y);
         GL.Viewport(0, 0, width, height);
-        var gridWidth = Math.Max(1, width / CellPixelWidth);
-        var gridHeight = Math.Max(1, height / CellPixelHeight);
+        var gridWidth = Math.Max(1, width / _atlas.GlyphWidth);
+        var gridHeight = Math.Max(1, height / _atlas.GlyphHeight);
         if (_grid.Width != gridWidth || _grid.Height != gridHeight)
         {
             _grid = new CellGrid(gridWidth, gridHeight);
@@ -157,6 +216,13 @@ public sealed class GpuRenderer : IDisposable
         }
 
         _window.SwapBuffers();
+
+        // robust 上下文下 TDR 的表现: GetError 报 CONTEXT_LOST(0x0507, ErrorCode 枚举未收录该值, 按 All 原始常量比较), 之后的 GL 调用全是空操作; 关闭窗口交回 Run() 重建。
+        if ((All)GL.GetError() == All.ContextLost)
+        {
+            _contextLost = true;
+            _window.Close();
+        }
     }
 
     private void OnKeyDown(KeyboardKeyEventArgs e)
@@ -193,8 +259,8 @@ public sealed class GpuRenderer : IDisposable
     {
         if (e.Button != MouseButton.Left || !e.IsPressed)
             return;
-        var cellX = (int)(_mouseX / CellPixelWidth);
-        var cellY = (int)(_mouseY / CellPixelHeight);
+        var cellX = (int)(_mouseX / _atlas.GlyphWidth);
+        var cellY = (int)(_mouseY / _atlas.GlyphHeight);
         _chat.HandleMouseClick(cellX, cellY, _layout);
     }
 

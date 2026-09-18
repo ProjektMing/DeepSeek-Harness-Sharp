@@ -6,11 +6,11 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Dsh.Core;
-using Dsh.Gui.Services;
 using Dsh.Gui.ViewModels;
 using Dsh.Gui.Views;
 using Dsh.Interaction;
 using Dsh.Llm;
+using Dsh.Tui;
 using Xunit.Abstractions;
 using TextBlock = Avalonia.Controls.TextBlock;
 
@@ -161,7 +161,7 @@ public sealed class GuiHeadlessTests(ITestOutputHelper output)
 
         var adapters = viewModel.Preferences.GpuAdapters;
         Assert.NotEmpty(adapters);
-        Assert.Equal(GpuPreference.AutoAdapter, adapters[0].Value);
+        Assert.Equal(GpuCatalog.AutoAdapter, adapters[0].Value);
         if (OperatingSystem.IsWindows())
         {
             // 本机是 AMD 780M + NVIDIA 4060 Laptop: 列表必须给出真实显卡而不是"渲染后端"。

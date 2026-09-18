@@ -51,9 +51,9 @@ public class GlyphAtlasTests
 
         Assert.Equal(slot, restored.GetGlyphIndex('A'));
         Assert.Equal(uv, restored.GetUv('A'));
-        for (var y = 0; y < GlyphAtlas.GlyphHeight; y++)
+        for (var y = 0; y < atlas.GlyphHeight; y++)
         {
-            for (var x = 0; x < GlyphAtlas.GlyphWidth; x++)
+            for (var x = 0; x < atlas.GlyphWidth; x++)
                 Assert.Equal(atlas.IsPixelSet('A', x, y), restored.IsPixelSet('A', x, y));
         }
     }
@@ -69,9 +69,9 @@ public class GlyphAtlasTests
         var atlas = CreateIsolated();
         var setPixels = 0;
 
-        for (var y = 0; y < GlyphAtlas.GlyphHeight; y++)
+        for (var y = 0; y < atlas.GlyphHeight; y++)
         {
-            for (var x = 0; x < GlyphAtlas.GlyphWidth; x++)
+            for (var x = 0; x < atlas.GlyphWidth; x++)
             {
                 if (atlas.IsPixelSet(character, x, y))
                     setPixels++;
@@ -93,9 +93,9 @@ public class GlyphAtlasTests
 
     private static int LastSetRow(GlyphAtlas atlas, char character)
     {
-        for (var y = GlyphAtlas.GlyphHeight - 1; y >= 0; y--)
+        for (var y = atlas.GlyphHeight - 1; y >= 0; y--)
         {
-            for (var x = 0; x < GlyphAtlas.GlyphWidth; x++)
+            for (var x = 0; x < atlas.GlyphWidth; x++)
             {
                 if (atlas.IsPixelSet(character, x, y))
                     return y;
@@ -113,7 +113,7 @@ public class GlyphAtlasTests
         var data = atlas.CreateTextureData();
 
         Assert.Equal(
-            GlyphAtlas.Columns * GlyphAtlas.Rows * GlyphAtlas.GlyphWidth * GlyphAtlas.GlyphHeight,
+            GlyphAtlas.Columns * GlyphAtlas.Rows * atlas.GlyphWidth * atlas.GlyphHeight,
             data.Length);
     }
 

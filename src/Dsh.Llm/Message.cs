@@ -193,6 +193,21 @@ public sealed record ToolResultMessage : Message
     }
 }
 
+/** 把消息内容块展开成可显示文本; 工具结果等嵌套块递归展开, GUI 与 TUI 共用。 */
+public static class MessageText
+{
+    public static string Flatten(IReadOnlyList<ContentBlock> blocks)
+        => string.Join('\n', blocks.Select(block => block switch
+        {
+            TextBlock text => text.Text,
+            ReasoningBlock reasoning => $"[reasoning] {reasoning.Text}",
+            ToolCallBlock call => $"[tool: {call.Name}] {call.Arguments}",
+            ToolResultBlock result => Flatten(result.Content),
+            ImageBlock => "[image]",
+            _ => $"[{block.Type}]",
+        }));
+}
+
 public static class MessageFactory
 {
     public const int ContextSummaryMaxChars = 120;

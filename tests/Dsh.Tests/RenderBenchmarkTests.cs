@@ -14,10 +14,10 @@ public class RenderBenchmarkTests
 
     private static readonly (int Width, int Height, string Label, int Frames)[] Tiers =
     [
-        (240, 67, "1920x1080 @10pt (8x16px/格)", 1000),
-        (320, 90, "2560x1440 @10pt (8x16px/格)", 1000),
-        (480, 135, "3840x2160 @10pt (8x16px/格)", 1000),
-        (640, 180, "5120x2880 @10pt (8x16px/格)", 1000),
+        (240, 67, "240x67 格", 1000),
+        (320, 90, "320x90 格", 1000),
+        (480, 135, "480x135 格", 1000),
+        (640, 180, "640x180 格", 1000),
     ];
 
     [Fact]
@@ -28,7 +28,7 @@ public class RenderBenchmarkTests
         report.AppendLine("# GPU vs CPU 渲染压测(markdown 语料)");
         report.AppendLine();
         report.AppendLine($"语料: {CorpusLines} 行合成 markdown(标题/粗体/行内代码/代码块/列表/表格/引用/JSON 工具结果/思维链,CJK 与 ASCII 混排,语法着色按真实 TUI 惯例)。");
-        report.AppendLine("网格档位按 10 磅等宽字(约 8x16 px/格)从物理分辨率换算;填充走 CellGrid.SetRow(span 拷贝,不计入被测路径)。");
+        report.AppendLine("网格档位为数量级代号(构建侧基准不出像素);图集默认 13pt = 10x16 px/格(对齐 Rider 终端)。填充走 CellGrid.SetRow(span 拷贝,不计入被测路径)。");
         report.AppendLine("CPU 路径: AnsiRenderer.Render(行级 diff);GPU 路径: 脏行 diff + CellPacker.PackRows(打包与字形齐备检查融合单趟)。两者均为帧数据构建,不含 GL 上传/绘制与终端消费。");
         report.AppendLine();
 
@@ -42,6 +42,7 @@ public class RenderBenchmarkTests
 
             FillStreaming(lines, grid, 0);
             renderer.Render(grid, 0, 0);
+            CellPacker.PackRows(grid, 0, height, packed, GlyphAtlas.Shared);
 
             var streaming = Measure(renderer, grid, previous, lines, packed, ranges, frames, streaming: true);
             var sparse = Measure(renderer, grid, previous, lines, packed, ranges, frames, streaming: false);
@@ -49,11 +50,14 @@ public class RenderBenchmarkTests
             var pixelLines = BuildPixelLines(CorpusLines, width, Seed);
             FillStreaming(pixelLines, grid, 0);
             renderer.Render(grid, 0, 0);
+            CellPacker.PackRows(grid, 0, height, packed, GlyphAtlas.Shared);
             var pixel = Measure(renderer, grid, previous, pixelLines, packed, ranges, frames, streaming: true);
 
             var wideLines = BuildWideLines(CorpusLines, width, Seed);
             FillStreaming(wideLines, grid, 0);
             renderer.Render(grid, 0, 0);
+            // 预热: 先把语料字形烘进图集(真实 TUI 只在启动后首批 CJK 文本付一次性烘焙), 计时测的是稳态构建而非一次性光栅化摊销。
+            CellPacker.PackRows(grid, 0, height, packed, GlyphAtlas.Shared);
             var wide = Measure(renderer, grid, previous, wideLines, packed, ranges, frames, streaming: true);
 
             report.AppendLine($"## {label}: {width}x{height} = {width * height} 格,{frames} 帧");

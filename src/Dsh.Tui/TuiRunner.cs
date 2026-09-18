@@ -124,9 +124,13 @@ public static class TuiRunner
         {
             if (!GpuRenderer.TryDetectDisplay(out var unavailableReason))
                 return ReturnGpuUnavailable(app, agent, unavailableReason);
-            var prewarm = Task.Run(() => GlyphAtlas.Shared.Prewarm());
-            using var chat = new ChatWindow(app.Ctx, agent, app.Home, app.Ctx.Get<ISessionPersistence>(Persistence.Plugin.ServiceName));
-            using var renderer = new GpuRenderer(chat);
+            // Linux 进程内选卡靠 PRIME 变量, 必须在 GLFW/Mesa 初始化之前设置; Windows 的 WGL 无进程内选卡 API, 不做处理。
+            if (OperatingSystem.IsLinux())
+                GpuCatalog.ApplyPrimeSelection(GpuCatalog.LoadSelectedAdapter(app.Home));
+            var atlas = CreateAtlasForTerminal();
+            var prewarm = Task.Run(() => atlas.Prewarm());
+            using var chat = new ChatWindow(app.Ctx, agent, app.Home);
+            using var renderer = new GpuRenderer(chat, atlas);
             renderer.Run();
             try
             {
@@ -152,6 +156,18 @@ public static class TuiRunner
         if (Console.IsInputRedirected)
             return 1;
         return RunInteractiveAsync(app, agent).GetAwaiter().GetResult();
+    }
+
+    /**
+     * GPU 渲染的字号跟随终端: 启动时向终端查询字符格子的像素尺寸(CSI 16 t), 按格高比例换算字号(默认档 13pt = 16px 格高);
+     * 终端不支持该查询或输出被重定向时用共享默认图集。用户想改字号就调终端字号, 重启 dsh 生效。
+     */
+    private static GlyphAtlas CreateAtlasForTerminal()
+    {
+        if (TerminalFontProbe.QueryCellPixelSize() is not { Height: > 0 } cell)
+            return GlyphAtlas.Shared;
+        var pt = GlyphAtlas.DefaultFontSizePt * cell.Height / GlyphAtlas.DefaultGlyphHeight;
+        return Math.Abs(pt - GlyphAtlas.DefaultFontSizePt) < 0.5 ? GlyphAtlas.Shared : new GlyphAtlas(fontSizePt: pt);
     }
 
     private static void SetConsoleInteractive(bool interactive)
