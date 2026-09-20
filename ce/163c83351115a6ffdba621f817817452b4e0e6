@@ -1,0 +1,229 @@
+tests/Dsh.Tests/GuiHeadlessTests.cs
+  h_2f801b72fa4d60 5,234
+src/Dsh.Gui/Views/MarketPageView.axaml
+  h_2f801b72fa4d60 27
+src/Dsh.Gui/Views/ChatView.axaml
+  h_2f801b72fa4d60 198
+tests/Dsh.Tests/MongoFact.cs
+  h_2f801b72fa4d60 1,10-11
+src/Dsh.Gui/Views/DecisionDialog.axaml
+  h_2f801b72fa4d60 87
+tests/Dsh.Tests/TranslateTests.cs
+  h_2f801b72fa4d60 36,55,69,83,105,141,157,170,182,190,203,218,229,237,243,328,344
+src/Dsh.Gui/Views/SettingsPageView.axaml
+  h_2f801b72fa4d60 124-128,142,240
+tests/Dsh.Tests/SsePipelineTests.cs
+  h_2f801b72fa4d60 23
+src/Dsh.Gui/Views/SidebarView.axaml
+  h_2f801b72fa4d60 74
+tests/Dsh.Tests/SingleInstanceTests.cs
+  h_2f801b72fa4d60 35
+DshGuiHost/DshGuiHost.csproj
+  h_2f801b72fa4d60 20
+  h_2f801b72fa4d60 19
+tests/Dsh.Tests/AgentInstructionsTests.cs
+  h_2f801b72fa4d60 5,104-105
+.gitignore
+  h_2f801b72fa4d60 9-11
+DeepSeek-Harness-Sharp.slnx
+  h_2f801b72fa4d60 1-57
+DeepSeek-Harness-Sharp/Program.cs
+  h_2f801b72fa4d60 65-68,70-75,77-79
+src/Dsh.Acp/AcpSocketServer.cs
+  h_2f801b72fa4d60 72
+src/Dsh.Boot/BootCli.cs
+  h_2f801b72fa4d60 211-220,222,336-345
+src/Dsh.Boot/SettingsDocument.cs
+  h_2f801b72fa4d60 83-93
+src/Dsh.Core/AgentLoop.cs
+  h_2f801b72fa4d60 74
+src/Dsh.Core/AgentLoopAgent.cs
+  h_2f801b72fa4d60 245
+src/Dsh.Core/Memory/ProjectMemory.cs
+  h_2f801b72fa4d60 215
+src/Dsh.Core/Session.cs
+  h_2f801b72fa4d60 95,201
+src/Dsh.Core/Subprocess.cs
+  h_2f801b72fa4d60 335
+src/Dsh.Core/Surface.cs
+  h_2f801b72fa4d60 186
+src/Dsh.Core/Tools.cs
+  h_2f801b72fa4d60 218,331-338,468,525-533,536-552
+src/Dsh.Goal/GoalChangePayload.cs
+  h_2f801b72fa4d60 36-43,46-54
+src/Dsh.Goal/GoalFold.cs
+  h_2f801b72fa4d60 54
+src/Dsh.Gui/Dsh.Gui.csproj
+  h_2f801b72fa4d60 14-16
+src/Dsh.Gui/Views/MainWindow.axaml.cs
+  h_2f801b72fa4d60 5,119,121
+src/Dsh.Interaction/PluginCommand.cs
+  h_2f801b72fa4d60 43-47
+src/Dsh.Jobs/LocalJobsService.cs
+  h_2f801b72fa4d60 331,390,397,399
+src/Dsh.Jobs/PersistentBashTool.cs
+  h_2f801b72fa4d60 149
+src/Dsh.Llm.Anthropic/AnthropicSse.cs
+  h_2f801b72fa4d60 95-117,119-120,123-126,128-153,156-157,159-164,166,168-172,176-182
+src/Dsh.Llm.DeepSeek/Serialize.cs
+  h_2f801b72fa4d60 81-90
+src/Dsh.Llm.OpenAi/Dsh.Llm.OpenAi.csproj
+  h_2f801b72fa4d60 12
+src/Dsh.Llm.OpenAi/OpenAiCompatibleAdapter.cs
+  h_2f801b72fa4d60 159-166,168-175,178-196,256-257,259-261,264-265,267,303
+src/Dsh.Llm/BlockAssembler.cs
+  h_2f801b72fa4d60 33-37,39,41-45,47,49-56,58,60-64,66
+src/Dsh.Llm/Errors.cs
+  h_2f801b72fa4d60 101-116
+src/Dsh.Llm/RetryPolicy.cs
+  h_2f801b72fa4d60 74
+src/Dsh.Memory/Dsh.Memory.csproj
+  h_2f801b72fa4d60 14
+src/Dsh.Persistence/JsonlSessionPersistence.cs
+  h_2f801b72fa4d60 108,166,211,232,253,261,386,442,602,612
+src/Dsh.Plugins.Generator/Dsh.Plugins.Generator.csproj
+  h_2f801b72fa4d60 15
+src/Dsh.Pty/PtyDaemon.cs
+  h_2f801b72fa4d60 202,204-206,208-225,230,232-237,239-244,246-250,252-264
+src/Dsh.Pty/UnixPtyNative.cs
+  h_2f801b72fa4d60 33-34
+src/Dsh.Runtime/Events.cs
+  h_2f801b72fa4d60 108-111
+src/Dsh.Sdk/HarnessClient.cs
+  h_2f801b72fa4d60 73
+src/Dsh.Sdk/HarnessSdkServer.cs
+  h_2f801b72fa4d60 172-176,179-186
+src/Dsh.SessionQuery/Dsh.SessionQuery.csproj
+  h_2f801b72fa4d60 20
+src/Dsh.Skills/HomePaths.cs
+  h_2f801b72fa4d60 40
+src/Dsh.Subagent/ChildComposition.cs
+  h_2f801b72fa4d60 139-140
+src/Dsh.Subagent/ConsumedWork.cs
+  h_2f801b72fa4d60 33-39,41,44-50
+src/Dsh.Terminal/TerminalSessionService.cs
+  h_2f801b72fa4d60 368,489
+src/Dsh.Tools/BashTool.cs
+  h_2f801b72fa4d60 173-174
+src/Dsh.Tools/Dsh.Tools.csproj
+  h_2f801b72fa4d60 13
+src/Dsh.Tools/EditTool.cs
+  h_2f801b72fa4d60 50-51
+src/Dsh.Tools/LocalFs.cs
+  h_2f801b72fa4d60 28
+src/Dsh.Tools/ReadTool.cs
+  h_2f801b72fa4d60 112-113
+src/Dsh.Tools/SearchTools.cs
+  h_2f801b72fa4d60 176-177,293-294
+src/Dsh.Tools/WriteTool.cs
+  h_2f801b72fa4d60 49-50
+src/Dsh.Tui/Dsh.Tui.csproj
+  h_2f801b72fa4d60 16-17
+src/Dsh.Tui/GpuRenderer.cs
+  h_2f801b72fa4d60 299
+src/Dsh.Tui/TranscriptRenderer.cs
+  h_2f801b72fa4d60 74-86
+src/Dsh.Web/WebFetchTool.cs
+  h_2f801b72fa4d60 125-126,132-133
+src/Dsh.Web/WebSearchTool.cs
+  h_2f801b72fa4d60 200-201,207-208
+src/Dsh.Workflow/Dsh.Workflow.csproj
+  h_2f801b72fa4d60 13
+src/Dsh.Workflow/ToolRalph.cs
+  h_2f801b72fa4d60 356-371,376
+src/Dsh.Workflow/WorkflowExecution.cs
+  h_2f801b72fa4d60 84
+src/Dsh.Workflow/WorkflowRealm.cs
+  h_2f801b72fa4d60 68-73,104-109,111-116
+tests/Dsh.Tests/AcpClientTests.cs
+  h_2f801b72fa4d60 70,74,77,84,128-130
+tests/Dsh.Tests/AgentLoopIntegrationTests.cs
+  h_2f801b72fa4d60 134,222,248,279
+tests/Dsh.Tests/AnsiRendererTests.cs
+  h_2f801b72fa4d60 214-222
+tests/Dsh.Tests/AskUserToolTests.cs
+  h_2f801b72fa4d60 117,144,174,217,232,254,271
+tests/Dsh.Tests/ChatWindowMenuTests.cs
+  h_2f801b72fa4d60 81,95,109,125
+tests/Dsh.Tests/ChatWindowTranscriptTests.cs
+  h_2f801b72fa4d60 136,163,186,214,234
+tests/Dsh.Tests/CheckpointTests.cs
+  h_2f801b72fa4d60 31,109
+tests/Dsh.Tests/CompactionTests.cs
+  h_2f801b72fa4d60 283,354,358,375
+tests/Dsh.Tests/ConfigBootTests.cs
+  h_2f801b72fa4d60 36,81
+tests/Dsh.Tests/Dsh.Tests.csproj
+  h_2f801b72fa4d60 17-18,23
+tests/Dsh.Tests/E2bTests.cs
+  h_2f801b72fa4d60 25,28
+tests/Dsh.Tests/GpuRenderCoreRenderTests.cs
+  h_2f801b72fa4d60 93-97
+tests/Dsh.Tests/HotPlugTests.cs
+  h_2f801b72fa4d60 114,147
+tests/Dsh.Tests/InteractionTests.cs
+  h_2f801b72fa4d60 84,104,124-125,131,148,175,188,208,249,263,276,302,320,337,355,371,384,399,490-491,503,528,548,570,587,590
+tests/Dsh.Tests/JobsTests.cs
+  h_2f801b72fa4d60 178,203,228,260,265,280,285
+tests/Dsh.Tests/MainViewModelTests.cs
+  h_2f801b72fa4d60 73,232
+tests/Dsh.Tests/MemoryCaptureTests.cs
+  h_2f801b72fa4d60 81,98
+tests/Dsh.Tests/MemoryCommandTests.cs
+  h_2f801b72fa4d60 31,43,74,78,82-83,85,114-115,141
+tests/Dsh.Tests/MemoryPluginTests.cs
+  h_2f801b72fa4d60 42,44,46
+tests/Dsh.Tests/ProjectMemoryTests.cs
+  h_2f801b72fa4d60 17,21,24,33,53,64-67,69,86,96,98,100,113,115,131-132,134
+tests/Dsh.Tests/ProviderCommandTests.cs
+  h_2f801b72fa4d60 26
+tests/Dsh.Tests/ProviderRegistrationTests.cs
+  h_2f801b72fa4d60 130
+tests/Dsh.Tests/PtyDaemonTests.cs
+  h_2f801b72fa4d60 19,21,41,47,49,70-71,87,89-91,120,125,129,190
+tests/Dsh.Tests/PtyHostTests.cs
+  h_2f801b72fa4d60 19,27,45,64,66,68,95,121
+tests/Dsh.Tests/RealLlmTurnSmokeTests.cs
+  h_2f801b72fa4d60 41,44
+tests/Dsh.Tests/RenderPipelineBenchmarkTests.cs
+  h_2f801b72fa4d60 158
+tests/Dsh.Tests/Runtime/EventBusTests.cs
+  h_2f801b72fa4d60 44
+tests/Dsh.Tests/Runtime/PluginUnloadTests.cs
+  h_2f801b72fa4d60 22
+tests/Dsh.Tests/Runtime/RuntimePluginTests.cs
+  h_2f801b72fa4d60 33,48
+tests/Dsh.Tests/SdkTests.cs
+  h_2f801b72fa4d60 74,79,166,270
+tests/Dsh.Tests/SessionCommandTests.cs
+  h_2f801b72fa4d60 30,73
+tests/Dsh.Tests/SessionPersistenceTests.cs
+  h_2f801b72fa4d60 142,179
+tests/Dsh.Tests/SessionQueryTests.cs
+  h_2f801b72fa4d60 109-110
+tests/Dsh.Tests/SessionResumeTests.cs
+  h_2f801b72fa4d60 33,84
+tests/Dsh.Tests/SkillTests.cs
+  h_2f801b72fa4d60 13,27
+tests/Dsh.Tests/TerminalBashLocalTests.cs
+  h_2f801b72fa4d60 81
+tests/Dsh.Tests/TerminalServiceTests.cs
+  h_2f801b72fa4d60 37,62-64,83,107
+tests/Dsh.Tests/WebProfileTests.cs
+  h_2f801b72fa4d60 14,17
+tests/Dsh.Tests/WebTests.cs
+  h_2f801b72fa4d60 216,307,314
+tests/Dsh.Tests/WorkflowTests.cs
+  h_2f801b72fa4d60 206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ce163c83351115a6ffdba621f817817452b4e0e6",
+  "prompts": {},
+  "humans": {
+    "h_2f801b72fa4d60": {
+      "author": "ProjektMing <joeyellowming@outlook.com>"
+    }
+  }
+}
