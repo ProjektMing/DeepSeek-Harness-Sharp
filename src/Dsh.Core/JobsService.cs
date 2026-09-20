@@ -1,7 +1,6 @@
 using Dsh.Runtime;
-using Dsh.Core;
 
-namespace Dsh.Jobs;
+namespace Dsh.Core;
 
 public abstract class JobsService : Service
 {

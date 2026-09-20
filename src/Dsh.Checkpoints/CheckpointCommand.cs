@@ -2,9 +2,7 @@ using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;
-using Dsh.Persistence;
 using Dsh.Runtime;
-using PersistencePlugin = Dsh.Persistence.Plugin;
 
 namespace Dsh.Checkpoints;
 
@@ -45,7 +43,7 @@ public static class CheckpointCommand
             var path = Path.Combine(
                 ctx.GetProp("dshHomePath") as string ?? HarnessHome.Resolve().Root,
                 "checkpoints",
-                JsonlLayout.ProjectKey(cwd));
+                ProjectStorageKey.Of(cwd));
             return new CommandResult.Success(
                 $"enabled: true\npoints: {points.Count}/{service.MaxPoints}\nkeep days: {service.KeepDays}\nstore: {path}");
         }
@@ -68,7 +66,7 @@ public static class CheckpointCommand
 
     private static string ForkSession(Context ctx, IAgent agent, CheckpointService service, int index, string cwd)
     {
-        var persistence = ctx.Get<ISessionPersistence>(PersistencePlugin.ServiceName)
+        var persistence = ctx.Get<ISessionPersistence>(ISessionPersistence.ServiceName)
             ?? throw new InvalidOperationException("session persistence is not available");
         var point = service.PointsFor(cwd)[index];
         var events = agent.Session.SnapshotEvents(0, point.Seq);

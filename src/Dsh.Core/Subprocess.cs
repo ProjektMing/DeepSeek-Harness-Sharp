@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Dsh.Runtime;
 
-namespace Dsh.Tools;
+namespace Dsh.Core;
 
 public sealed record SubprocessCollect(int MaxBytes, int? SpillMaxBytes);
 

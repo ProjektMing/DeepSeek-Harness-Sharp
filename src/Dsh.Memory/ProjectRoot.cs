@@ -1,4 +1,4 @@
-namespace Dsh.Core;
+namespace Dsh.Memory;
 
 /** 解析项目根:git 仓库取仓库根,worktree 归并到主工作树根,非 git 目录用起始目录本身。 */
 public static class ProjectRoot

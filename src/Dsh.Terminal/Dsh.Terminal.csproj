@@ -6,8 +6,6 @@
     <ProjectReference Include="..\Dsh.Runtime\Dsh.Runtime.csproj" />
     <ProjectReference Include="..\Dsh.Plugins.Abstractions\Dsh.Plugins.Abstractions.csproj" />
     <ProjectReference Include="..\Dsh.Core\Dsh.Core.csproj" />
-    <ProjectReference Include="..\Dsh.Tools\Dsh.Tools.csproj" />
-    <ProjectReference Include="..\Dsh.Jobs\Dsh.Jobs.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

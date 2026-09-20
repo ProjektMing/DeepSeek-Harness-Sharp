@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using Dsh.Runtime;
-using Dsh.Subagent;
+using Dsh.Core;
 using Jint;
 
 namespace Dsh.Workflow;
@@ -50,7 +50,7 @@ public sealed class WorkerThreadWorkflowEngine : WorkflowEngine
             maxTotalAgents,
             _maxItemsPerCall,
             _syncTimeoutMs);
-        var subagents = Ctx.Get<SubagentRuntime>(SubagentRuntime.ServiceName)
+        var subagents = Ctx.Get<ISubagentService>(ISubagentService.ServiceName)
             ?? throw new InvalidOperationException("workflow engine requires the subagents service");
         var controller = new CancellationTokenSource();
         var port = new WorkflowRunHost.SubagentChildPort(subagents, subagentProvider, request.Parent, controller);
@@ -77,8 +77,8 @@ public sealed class WorkerThreadWorkflowEngine : WorkflowEngine
             throw new WorkflowError(
                 "workflow subagentProvider must be a non-empty normalized string",
                 WorkflowErrorCodes.InvalidArgument);
-        var subagents = Ctx.Get<SubagentRuntime>(SubagentRuntime.ServiceName)!;
-        if (subagents.GetProvider(provider) is null)
+        var subagents = Ctx.Get<ISubagentService>(ISubagentService.ServiceName)!;
+        if (subagents.GetProviderInfo(provider) is null)
             throw new WorkflowError($"no subagent provider registered for \"{provider}\"", WorkflowErrorCodes.AgentStart);
         return provider;
     }

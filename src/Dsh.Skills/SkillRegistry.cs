@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Dsh.Runtime;
 using Dsh.Core;
+using Dsh.Interaction;
 
 namespace Dsh.Skills;
 
@@ -11,9 +12,9 @@ public sealed record SkillRegistryConfig
     public int CollectCacheMaxEntries { get; init; } = SkillRegistry.DefaultCollectCacheEntries;
 }
 
-public sealed class SkillRegistry : Service
+public sealed class SkillRegistry : Service, ISkillCatalog
 {
-    public const string ServiceName = "skills";
+    public const string ServiceName = ISkillCatalog.ServiceName;
     public const int BundledSkillRank = 600;
     public const int DefaultCollectCacheEntries = 128;
 
@@ -146,6 +147,9 @@ public sealed class SkillRegistry : Service
 
     public async Task<IReadOnlyList<SkillSummary>> List(SkillViewOptions? options = null)
         => (await Snapshot(options)).Skills;
+
+    public async Task<IReadOnlyList<string>> ListNames(CancellationToken cancellationToken = default)
+        => [.. (await List(new SkillViewOptions { Signal = cancellationToken })).Select(skill => skill.Name)];
 
     public async Task<SkillCatalogSnapshot> Snapshot(SkillViewOptions? options = null)
     {

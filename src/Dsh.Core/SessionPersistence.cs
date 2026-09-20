@@ -31,6 +31,8 @@ public interface ISessionHandle : IDisposable
 
 public interface ISessionPersistence
 {
+    public const string ServiceName = "sessionPersistence";
+
     ISessionHandle Create(SessionHeader header, long? inheritedEventCount = null);
     ISessionHandle Open(SessionId id, SessionAccess access);
     SessionPersistenceSnapshot? Stat(SessionId id);

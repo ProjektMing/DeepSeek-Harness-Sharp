@@ -1,7 +1,6 @@
-using Dsh.Core;
 using Dsh.Llm;
 
-namespace Dsh.Jobs;
+namespace Dsh.Core;
 
 public enum JobStatus
 {

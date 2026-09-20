@@ -7,8 +7,6 @@
     <ProjectReference Include="..\Dsh.Plugins.Abstractions\Dsh.Plugins.Abstractions.csproj" />
     <ProjectReference Include="..\Dsh.Core\Dsh.Core.csproj" />
     <ProjectReference Include="..\Dsh.Llm\Dsh.Llm.csproj" />
-    <ProjectReference Include="..\Dsh.Subagent\Dsh.Subagent.csproj" />
-    <ProjectReference Include="..\Dsh.Tools\Dsh.Tools.csproj" />
   </ItemGroup>
 
   <ItemGroup>

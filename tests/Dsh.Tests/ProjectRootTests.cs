@@ -1,4 +1,4 @@
-using Dsh.Core;
+using Dsh.Memory;
 
 namespace Dsh.Tests;
 

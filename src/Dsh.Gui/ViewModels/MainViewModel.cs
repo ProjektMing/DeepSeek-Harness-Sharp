@@ -42,7 +42,6 @@ public enum SessionMode
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     public const int TracePreviewChars = 160;
-    private const string PersistenceServiceName = "sessionPersistence";
 
     private readonly Context _ctx;
     private readonly AgentRegistry _agents;
@@ -383,7 +382,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ExportSessionLogAsync()
     {
-        var persistence = _ctx.Get<ISessionPersistence>(PersistenceServiceName, false);
+        var persistence = _ctx.Get<ISessionPersistence>(ISessionPersistence.ServiceName, false);
         if (persistence is null)
         {
             StatusText = "会话持久化不可用";

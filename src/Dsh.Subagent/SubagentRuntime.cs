@@ -4,9 +4,9 @@ using Dsh.Llm;
 
 namespace Dsh.Subagent;
 
-public sealed partial class SubagentRuntime : Service
+public sealed partial class SubagentRuntime : Service, ISubagentService
 {
-    public const string ServiceName = "subagents";
+    public const string ServiceName = ISubagentService.ServiceName;
     public const string DelegationContextName = "subagent:delegation";
 
     private readonly Dictionary<string, ISubagentProvider> _providers = [];
@@ -46,6 +46,11 @@ public sealed partial class SubagentRuntime : Service
     }
 
     public ISubagentProvider? GetProvider(string name) => _providers.GetValueOrDefault(name);
+
+    public SubagentProviderInfo? GetProviderInfo(string name)
+        => GetProvider(name) is { } provider
+            ? new SubagentProviderInfo(provider.Capabilities, provider.InheritsParentContext)
+            : null;
 
     public IReadOnlyList<string> List() => _providerNames.ToList();
 

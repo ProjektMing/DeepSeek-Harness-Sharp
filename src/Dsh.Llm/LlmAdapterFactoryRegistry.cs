@@ -1,7 +1,7 @@
-using Dsh.Llm;
 using Dsh.Runtime;
+using Dsh.Runtime.Events;
 
-namespace Dsh.Core;
+namespace Dsh.Llm;
 
 /** 适配器工厂登记表:适配器插件在此声明能服务的 wire 类型,宿主按 settings.yaml 的 type 选用。
  *  同一 wire 由多个工厂声明时取先登记者。 */
@@ -64,4 +64,9 @@ public sealed class LlmAdapterFactoryRegistry(Context ctx) : Service(ctx, Servic
         }
         return null;
     }
+}
+
+public sealed record LlmAdapterFactoriesUpdatedNotification : INotification
+{
+    public static string EventName => "llm/adapter-factories-updated";
 }

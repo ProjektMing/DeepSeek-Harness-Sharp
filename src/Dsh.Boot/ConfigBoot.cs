@@ -51,7 +51,7 @@ public static class ConfigBoot
 
         try
         {
-            var composition = await Composition.StartAsync(ctx, BuildEntries(ctx, pluginHost, options, settings.Plugins));
+            var composition = await Composition.StartAsync(ctx, BuildEntries(ctx, pluginHost, options, settings));
             app.Composition = composition;
             ctx.LoggerFor("boot").Info("composition ready: %d plugin(s), home %s", composition.Activations.Count, options.Home.Root);
             var manager = new HarnessPluginManager(pluginHost, composition, options.Home, settings, discovery.Managed);
@@ -70,8 +70,9 @@ public static class ConfigBoot
         Context ctx,
         PluginHost host,
         HarnessOptions options,
-        IReadOnlyDictionary<string, PluginSetting> plugins)
+        HarnessSettings settings)
     {
+        var plugins = settings.Plugins;
         var entries = new List<PluginEntry>();
         foreach (var name in host.Catalog.PackageNames.OrderBy(name => name, StringComparer.Ordinal))
         {
@@ -83,7 +84,7 @@ public static class ConfigBoot
                 ctx.LoggerFor("loader").Error("%s", $"plugin not found: {name}");
                 continue;
             }
-            entries.Add(new PluginEntry(definition!, setting is { Parameters.Count: > 0 } ? setting.Parameters : null));
+            entries.Add(new PluginEntry(definition!, setting is { Parameters.Count: > 0 } ? setting.Parameters : DomainSectionFor(name, settings)));
         }
         foreach (var name in plugins.Keys)
         {
@@ -107,6 +108,14 @@ public static class ConfigBoot
             ? plugin => (IDshPlugin)create.Invoke(null, [plugin])!
             : null;
     }
+
+    /** 域插件的顶层配置段随插件加载注入 config(可空);plugins 段里的显式参数优先于顶层段。 */
+    private static object? DomainSectionFor(string package, HarnessSettings settings) => package switch
+    {
+        "@deepseek-ai/dsh-memory" => settings.Memory,
+        "@deepseek-ai/dsh-checkpoints" => settings.Checkpoints,
+        _ => null,
+    };
 
     /** 桥程序集默认不随宿主启动加载:先从已加载程序集查找,再按名加载;AOT 下已在镜像中,直接命中。 */
     private static Type? FindNativeBridge()

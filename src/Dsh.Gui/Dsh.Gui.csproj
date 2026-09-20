@@ -7,7 +7,6 @@
     <ProjectReference Include="..\Dsh.Core\Dsh.Core.csproj" />
     <ProjectReference Include="..\Dsh.Interaction\Dsh.Interaction.csproj" />
     <ProjectReference Include="..\Dsh.Llm\Dsh.Llm.csproj" />
-    <ProjectReference Include="..\Dsh.Persistence\Dsh.Persistence.csproj" />
     <ProjectReference Include="..\Dsh.Runtime\Dsh.Runtime.csproj" />
   </ItemGroup>
 

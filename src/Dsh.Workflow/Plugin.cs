@@ -1,7 +1,6 @@
 using Dsh.Runtime;
 using Dsh.Core;
 using Dsh.Plugins;
-using Dsh.Subagent;
 
 [assembly: DshPlugin(Dsh.Workflow.Plugin.WorkflowWorkerThread)]
 [assembly: DshPlugin(Dsh.Workflow.Plugin.ToolWorkflow)]
@@ -17,9 +16,9 @@ public sealed class Plugin(string packageName) : IDshPlugin
 
     public string[] Inject => packageName switch
     {
-        WorkflowWorkerThread => [SubagentRuntime.ServiceName],
+        WorkflowWorkerThread => [ISubagentService.ServiceName],
         ToolWorkflow => [ToolRuntime.ServiceName, WorkflowEngine.ServiceName, SystemPrompt.ServiceName],
-        ToolRalph => [ToolRuntime.ServiceName, WorkflowEngine.ServiceName, SubagentRuntime.ServiceName, SystemPrompt.ServiceName],
+        ToolRalph => [ToolRuntime.ServiceName, WorkflowEngine.ServiceName, ISubagentService.ServiceName, SystemPrompt.ServiceName],
         _ => throw new InvalidOperationException($"Unknown DSH package '{packageName}'."),
     };
 

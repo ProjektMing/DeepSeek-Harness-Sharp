@@ -2,7 +2,6 @@ using System.Threading.Channels;
 using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Llm;
-using Dsh.Persistence;
 using Dsh.Runtime;
 using Dsh.Runtime.Events;
 
@@ -14,28 +13,22 @@ public sealed record CheckpointPolicy
     public required int MaxPoints { get; init; }
     public required int KeepDays { get; init; }
 
-    public static CheckpointPolicy Resolve(HarnessSettings? settings, object? config)
+    /** config 为 Boot 注入的顶层 checkpoints 段,或 plugins 段里的显式参数表(优先并取代顶层段),均可空。 */
+    public static CheckpointPolicy Resolve(object? config)
     {
-        var policy = new CheckpointPolicy
+        var section = config as CheckpointsSettings;
+        var enabled = section?.Enabled ?? false;
+        var maxPoints = section?.MaxPoints ?? CheckpointsSettings.DefaultMaxPoints;
+        var keepDays = section?.KeepDays ?? CheckpointsSettings.DefaultKeepDays;
+        if (config is IReadOnlyDictionary<string, object?> map)
         {
-            Enabled = settings?.Checkpoints?.Enabled ?? false,
-            MaxPoints = settings?.Checkpoints?.MaxPoints ?? CheckpointsSettings.DefaultMaxPoints,
-            KeepDays = settings?.Checkpoints?.KeepDays ?? CheckpointsSettings.DefaultKeepDays,
-        };
-        if (config is not IReadOnlyDictionary<string, object?> map)
-        {
-            return new CheckpointPolicy
-            {
-                Enabled = policy.Enabled,
-                MaxPoints = Math.Max(1, policy.MaxPoints),
-                KeepDays = Math.Max(1, policy.KeepDays),
-            };
+            enabled = map.TryGetValue("enabled", out var enabledValue) && enabledValue is bool flag ? flag : enabled;
+            maxPoints = map.TryGetValue("max_points", out var maxValue) && maxValue is long max ? (int)max : maxPoints;
+            keepDays = map.TryGetValue("keep_days", out var keepValue) && keepValue is long keep ? (int)keep : keepDays;
         }
-        var maxPoints = map.TryGetValue("max_points", out var maxValue) && maxValue is long max ? (int)max : policy.MaxPoints;
-        var keepDays = map.TryGetValue("keep_days", out var keepValue) && keepValue is long keep ? (int)keep : policy.KeepDays;
         return new CheckpointPolicy
         {
-            Enabled = map.TryGetValue("enabled", out var enabled) && enabled is bool flag ? flag : policy.Enabled,
+            Enabled = enabled,
             MaxPoints = Math.Max(1, maxPoints),
             KeepDays = Math.Max(1, keepDays),
         };
@@ -169,7 +162,7 @@ public sealed class CheckpointService : Service, IDisposable
         {
             if (_repos.TryGetValue(cwd, out var existing))
                 return existing;
-            var root = Path.Combine(_homeRoot, "checkpoints", JsonlLayout.ProjectKey(cwd));
+            var root = Path.Combine(_homeRoot, "checkpoints", ProjectStorageKey.Of(cwd));
             var created = new ProjectRepo(
                 new ShadowGit(Path.Combine(root, "repo.git"), cwd),
                 new CheckpointLog(Path.Combine(root, "points.jsonl")));

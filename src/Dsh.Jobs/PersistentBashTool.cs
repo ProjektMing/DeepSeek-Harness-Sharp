@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 using Dsh.Runtime;
 using Dsh.Core;
 using Dsh.Llm;
-using Dsh.Tools;
 
 namespace Dsh.Jobs;
 
@@ -188,7 +187,7 @@ public static class PersistentBashTool
             {
                 Argv = [shellPath],
                 Cwd = cwd,
-                Env = BashTool.EnvOverridesShared,
+                Env = ShellEnvironment.NonInteractiveOverrides,
                 Stdout = new SubprocessCollect(Math.Max(64 * 1024, resolved.MaxOutputChars * 4), null),
                 Stderr = new SubprocessCollect(64 * 1024, null),
                 RedirectStandardInput = true,

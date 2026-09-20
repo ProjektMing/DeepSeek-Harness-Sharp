@@ -106,14 +106,14 @@ public sealed partial class MemoryDocument
     {
         var builder = new StringBuilder();
         foreach (var line in Preamble)
-            builder.AppendLine(line);
+            builder.Append(line).Append('\n');
         foreach (var section in Sections)
         {
             if (builder.Length > 0 && !EndsWithBlankLine(builder))
-                builder.AppendLine();
-            builder.Append("## ").AppendLine(section.Name);
+                builder.Append('\n');
+            builder.Append("## ").Append(section.Name).Append('\n');
             foreach (var entry in section.Entries)
-                builder.AppendLine(entry.Record?.Render() ?? entry.RawLine ?? "");
+                builder.Append(entry.Record?.Render() ?? entry.RawLine ?? "").Append('\n');
         }
         return builder.ToString();
     }

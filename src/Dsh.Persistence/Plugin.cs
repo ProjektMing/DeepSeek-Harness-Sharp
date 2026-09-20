@@ -30,13 +30,11 @@ public sealed class Plugin(string packageName) : IDshPlugin
         var homePath = ctx.GetProp("dshHomePath") as string
             ?? throw new InvalidOperationException("dshHomePath is required for the persistence plugin");
         var persistence = new JsonlSessionPersistence(Path.Combine(homePath, "sessions"));
-        ctx.Provide(ServiceName, persistence);
+        ctx.Provide(ISessionPersistence.ServiceName, persistence);
         var command = SessionCommand.Register(ctx, persistence);
         var wiring = WirePersistence(ctx, persistence);
         return new DisposableBundle(persistence, command, wiring);
     }
-
-    public const string ServiceName = "sessionPersistence";
 
     internal static IDisposable WirePersistence(Context ctx, ISessionPersistence persistence)
     {

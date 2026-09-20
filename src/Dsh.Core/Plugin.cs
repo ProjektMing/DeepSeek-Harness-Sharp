@@ -1,4 +1,5 @@
 using Dsh.Runtime;
+using Dsh.Llm;
 using Dsh.Plugins;
 
 [assembly: DshPlugin(Dsh.Core.Plugin.Core)]
@@ -36,10 +37,8 @@ public sealed class Plugin(string packageName) : IDshPlugin
     }
 
     private static ISessionPersistence PersistenceOf(Context ctx)
-        => ctx.Get<ISessionPersistence>(PersistenceServiceName, false)
+        => ctx.Get<ISessionPersistence>(ISessionPersistence.ServiceName, false)
             ?? throw new InvalidOperationException("no session persistence backend configured for resume");
-
-    private const string PersistenceServiceName = "sessionPersistence";
 
     private static SystemPromptConfig SystemPromptConfigFrom(object? config)
     {

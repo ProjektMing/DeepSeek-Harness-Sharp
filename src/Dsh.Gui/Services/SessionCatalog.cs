@@ -1,7 +1,6 @@
 using Dsh.Core;
 using Dsh.Gui.ViewModels;
 using Dsh.Runtime;
-using PersistencePlugin = Dsh.Persistence.Plugin;
 
 namespace Dsh.Gui.Services;
 
@@ -11,7 +10,7 @@ public sealed class SessionCatalog(Context ctx)
     public IReadOnlyList<SessionNodeViewModel> Load()
     {
         var nodes = new Dictionary<string, SessionNodeViewModel>(StringComparer.Ordinal);
-        var persistence = ctx.Get<ISessionPersistence>(PersistencePlugin.ServiceName, strict: false);
+        var persistence = ctx.Get<ISessionPersistence>(ISessionPersistence.ServiceName, strict: false);
         foreach (var snapshot in persistence?.List() ?? [])
             nodes[snapshot.Header.Id.Value] = Create(snapshot.Header, null);
         foreach (var agent in LiveAgents())

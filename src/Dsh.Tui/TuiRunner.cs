@@ -44,7 +44,7 @@ public static class TuiRunner
 
     private static async Task<int> RunNonInteractiveAsync(HarnessApp app, AgentLoopAgent agent)
     {
-        using var chat = new ChatWindow(app.Ctx, agent, app.Home, app.Ctx.Get<ISessionPersistence>(Persistence.Plugin.ServiceName));
+        using var chat = new ChatWindow(app.Ctx, agent, app.Home, app.Ctx.Get<ISessionPersistence>(ISessionPersistence.ServiceName));
         chat.DrainUi();
         var size = GetConsoleSize();
         var layout = LayoutEngine.Calculate(size.Width, size.Height);
@@ -66,7 +66,7 @@ public static class TuiRunner
         var renderer = new AnsiRenderer();
         var grid = new CellGrid(80, 25);
         var forceFull = true;
-        using var chat = new ChatWindow(app.Ctx, agent, app.Home, app.Ctx.Get<ISessionPersistence>(Persistence.Plugin.ServiceName));
+        using var chat = new ChatWindow(app.Ctx, agent, app.Home, app.Ctx.Get<ISessionPersistence>(ISessionPersistence.ServiceName));
         try
         {
             while (!chat.ExitRequested)

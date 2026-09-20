@@ -2,7 +2,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dsh.Runtime;
 using Dsh.Core;
-using Dsh.Jobs;
 using Dsh.Llm;
 
 namespace Dsh.Terminal;

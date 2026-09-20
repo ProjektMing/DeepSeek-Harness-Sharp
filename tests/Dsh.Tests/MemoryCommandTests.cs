@@ -3,6 +3,7 @@ using Dsh.Boot;
 using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;
+using Dsh.Memory;
 
 namespace Dsh.Tests;
 
@@ -21,6 +22,9 @@ public sealed class MemoryCommandTests
             _ = new SystemPrompt(ctx, new SystemPromptConfig());
             var commands = CommandsService.Register(ctx);
             var options = new HarnessOptions(home, Cwd: projectDir);
+            ctx.Provide(MemoryServices.ProjectMemory, new ProjectMemory(
+                new FileMemoryStore(Path.Combine(projectDir, ".dsh-memory.md")),
+                Path.Combine(projectDir, ".dsh-memory")));
             using var registration = MemoryCommand.Register(ctx, options);
             var agent = new FakeAgent(ctx);
 
@@ -76,6 +80,7 @@ public sealed class MemoryCommandTests
                 "## Facts\n- a :: 1 (2026-09-16T09:35:17Z)\n");
             var sidecar = Path.Combine(projectDir, ".dsh-memory");
             var memory = new ProjectMemory(new FileMemoryStore(Path.Combine(projectDir, ".dsh-memory.md")), sidecar);
+            ctx.Provide(MemoryServices.ProjectMemory, memory);
             await memory.WriteDigestAsync(SessionId.Create("s-1"), "topic", "summary text");
             await commands.Execute(agent, "/memory on");
 
@@ -86,6 +91,34 @@ public sealed class MemoryCommandTests
             Assert.Contains("- a :: 1 (", success.Text);
             Assert.Contains("s-1", success.Text);
             Assert.Contains("summary text", success.Text);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task ShowWithoutMemoryPlugin_ReturnsError()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "dsh-memory-cmd", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var home = new HarnessHome(Path.Combine(root, "home"));
+        try
+        {
+            var ctx = new Context();
+            _ = new SystemPrompt(ctx, new SystemPromptConfig());
+            var commands = CommandsService.Register(ctx);
+            var options = new HarnessOptions(home, Cwd: root);
+            using var registration = MemoryCommand.Register(ctx, options);
+            var agent = new FakeAgent(ctx);
+
+            await commands.Execute(agent, "/memory on");
+            var shown = await commands.Execute(agent, "/memory show");
+
+            Assert.NotNull(shown);
+            var error = Assert.IsType<CommandResult.Error>(shown.Result);
+            Assert.Contains("memory plugin is not loaded", error.Text);
         }
         finally
         {

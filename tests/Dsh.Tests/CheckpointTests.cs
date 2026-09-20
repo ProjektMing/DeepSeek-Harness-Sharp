@@ -162,13 +162,10 @@ public sealed class CheckpointTests
     [Fact]
     public void Policy_ResolveReadsSettingsAndConfig()
     {
-        var settings = new HarnessSettings
-        {
-            Checkpoints = new CheckpointsSettings { Enabled = true, MaxPoints = 4, KeepDays = 7 },
-        };
-        Assert.True(CheckpointPolicy.Resolve(settings, null).Enabled);
-        Assert.Equal(4, CheckpointPolicy.Resolve(settings, null).MaxPoints);
-        var overridden = CheckpointPolicy.Resolve(settings, new Dictionary<string, object?>
+        var section = new CheckpointsSettings { Enabled = true, MaxPoints = 4, KeepDays = 7 };
+        Assert.True(CheckpointPolicy.Resolve(section).Enabled);
+        Assert.Equal(4, CheckpointPolicy.Resolve(section).MaxPoints);
+        var overridden = CheckpointPolicy.Resolve(new Dictionary<string, object?>
         {
             ["enabled"] = false,
             ["max_points"] = 2L,
@@ -177,7 +174,7 @@ public sealed class CheckpointTests
         Assert.False(overridden.Enabled);
         Assert.Equal(2, overridden.MaxPoints);
         Assert.Equal(1, overridden.KeepDays);
-        Assert.False(CheckpointPolicy.Resolve(new HarnessSettings(), null).Enabled);
+        Assert.False(CheckpointPolicy.Resolve(null).Enabled);
     }
 
     private static SessionHeader Header(string cwd) => new()

@@ -41,16 +41,6 @@ public static class BashTool
         + "Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. "
         + "Background execution is not available; long-running commands must finish within the timeout.";
 
-    private static readonly IReadOnlyDictionary<string, string?> EnvOverrides = new Dictionary<string, string?>
-    {
-        ["NO_COLOR"] = "1",
-        ["TERM"] = "dumb",
-        ["PAGER"] = "cat",
-        ["GIT_PAGER"] = "cat",
-    };
-
-    public static IReadOnlyDictionary<string, string?> EnvOverridesShared => EnvOverrides;
-
     public static IDisposable Register(Context ctx, BashToolConfig? config = null)
     {
         var resolved = config ?? new BashToolConfig();
@@ -139,7 +129,7 @@ public static class BashTool
         using var timeoutSignal = new CancellationTokenSource();
         using var fused = CancellationTokenSource.CreateLinkedTokenSource(exec.Signal, timeoutSignal.Token);
         timeoutSignal.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
-        var env = EnvOverrides;
+        var env = ShellEnvironment.NonInteractiveOverrides;
         var handle = subprocess.Spawn(new SubprocessSpawnSpec
         {
             Argv = ["bash", "-c", command],

@@ -3,7 +3,6 @@ using System.Text.Json.Nodes;
 using Dsh.Runtime;
 using Dsh.Core;
 using Dsh.Llm;
-using Dsh.Subagent;
 
 namespace Dsh.Workflow;
 
@@ -142,7 +141,7 @@ public static class ToolRalph
         var resolved = ResolveConfig(config);
         var tools = ctx.Get<ToolRuntime>(ToolRuntime.ServiceName)!;
         var workflow = ctx.Get<WorkflowEngine>(WorkflowEngine.ServiceName)!;
-        var subagents = ctx.Get<SubagentRuntime>(SubagentRuntime.ServiceName)!;
+        var subagents = ctx.Get<ISubagentService>(ISubagentService.ServiceName)!;
         var systemPrompt = ctx.Get<SystemPrompt>(SystemPrompt.ServiceName)!;
         var prompt = systemPrompt.Section(PromptSection.Literal(
             "tool:ralph",
@@ -177,7 +176,7 @@ public static class ToolRalph
         return resolved;
     }
 
-    private static ToolDefinition BuildDefinition(WorkflowEngine workflow, SubagentRuntime subagents, ToolRalphConfig config)
+    private static ToolDefinition BuildDefinition(WorkflowEngine workflow, ISubagentService subagents, ToolRalphConfig config)
     {
         return new ToolDefinition
         {
@@ -194,7 +193,7 @@ public static class ToolRalph
 
     private static async Task<object?> ExecuteAsync(
         WorkflowEngine workflow,
-        SubagentRuntime subagents,
+        ISubagentService subagents,
         ToolRalphConfig config,
         JsonElement args,
         ToolRunContext exec)
@@ -260,9 +259,9 @@ public static class ToolRalph
         return value;
     }
 
-    private static void RequireFreshProvider(SubagentRuntime subagents, string providerName)
+    private static void RequireFreshProvider(ISubagentService subagents, string providerName)
     {
-        var provider = subagents.GetProvider(providerName)
+        var provider = subagents.GetProviderInfo(providerName)
             ?? throw new InvalidOperationException($"Ralph subagent provider \"{providerName}\" is not registered");
         if (!provider.Capabilities.OutputSchema)
             throw new InvalidOperationException($"Ralph subagent provider \"{providerName}\" does not support structured output");

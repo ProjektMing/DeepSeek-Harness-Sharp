@@ -1,6 +1,7 @@
 using Dsh.Runtime;
 using Dsh.Boot;
 using Dsh.Core;
+using Dsh.Llm;
 using System.Net.Http.Headers;
 using System.Text.Json;
 

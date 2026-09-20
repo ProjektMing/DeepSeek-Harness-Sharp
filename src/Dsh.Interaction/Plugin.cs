@@ -1,6 +1,7 @@
 using Dsh.Runtime;
 using Dsh.Boot;
 using Dsh.Core;
+using Dsh.Llm;
 using Dsh.Plugins;
 
 [assembly: DshPlugin(Dsh.Interaction.Plugin.Interaction)]

@@ -217,14 +217,14 @@ public class SessionPersistenceTests : IDisposable
     [InlineData("C:\\src\\app", "--C-src-app--")]
     [InlineData("/a b/c", "--a~0020b-c--")]
     [InlineData("/tmp/", "--tmp---")]
-    public void ProjectKey_EncodesProjectPaths(string cwd, string expected)
-        => Assert.Equal(expected, JsonlLayout.ProjectKey(cwd));
+    public void ProjectStorageKey_EncodesProjectPaths(string cwd, string expected)
+        => Assert.Equal(expected, ProjectStorageKey.Of(cwd));
 
     [Fact]
-    public void ProjectKey_TruncatesLongSlugs()
+    public void ProjectStorageKey_TruncatesLongSlugs()
     {
-        var key = JsonlLayout.ProjectKey("/" + new string('a', 300));
-        Assert.Equal($"--{new string('a', JsonlLayout.MaxProjectSlugLength)}--", key);
+        var key = ProjectStorageKey.Of("/" + new string('a', 300));
+        Assert.Equal($"--{new string('a', ProjectStorageKey.MaxSlugLength)}--", key);
     }
 
     [Fact]

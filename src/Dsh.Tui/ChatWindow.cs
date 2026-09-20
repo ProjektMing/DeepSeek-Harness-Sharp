@@ -5,7 +5,6 @@ using Dsh.Core;
 using Dsh.Interaction;
 using Dsh.Llm;
 using Dsh.Pty;
-using Dsh.Skills;
 
 namespace Dsh.Tui;
 
@@ -935,18 +934,17 @@ public sealed class ChatWindow : IDisposable
 
     private void LoadSkillCandidates()
     {
-        var registry = _ctx.Get<SkillRegistry>(SkillRegistry.ServiceName);
-        if (registry is null)
+        var catalog = _ctx.Get<ISkillCatalog>(ISkillCatalog.ServiceName, false);
+        if (catalog is null)
             return;
-        _ = LoadSkillCandidatesAsync(registry);
+        _ = LoadSkillCandidatesAsync(catalog);
     }
 
-    private async Task LoadSkillCandidatesAsync(SkillRegistry registry)
+    private async Task LoadSkillCandidatesAsync(ISkillCatalog catalog)
     {
         try
         {
-            var skills = await registry.List();
-            _skillCandidates = skills.Select(skill => skill.Name).ToList();
+            _skillCandidates = await catalog.ListNames();
         }
         catch (Exception error)
         {

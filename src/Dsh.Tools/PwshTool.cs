@@ -85,7 +85,7 @@ public static class PwshTool
         {
             Argv = ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", EncodingPreamble + command],
             Cwd = workdir,
-            Env = BashTool.EnvOverridesShared,
+            Env = ShellEnvironment.NonInteractiveOverrides,
             Stdout = new SubprocessCollect(config.MaxOutputBytes, config.MaxSpillBytes),
             Stderr = new SubprocessCollect(config.MaxOutputBytes, config.MaxSpillBytes),
             Signal = fused.Token,

@@ -21,8 +21,7 @@ public sealed class Plugin(string packageName) : IDshPlugin
     public IDisposable Apply(Context ctx, object? config)
     {
         var homeRoot = ctx.GetProp("dshHomePath") as string ?? HarnessHome.Resolve().Root;
-        var settings = HarnessSettings.Load(HarnessHome.Resolve(homeRoot));
-        var policy = CheckpointPolicy.Resolve(settings, config);
+        var policy = CheckpointPolicy.Resolve(config);
         if (!policy.Enabled)
             return new NoopDisposable();
         var service = new CheckpointService(ctx, policy, homeRoot);

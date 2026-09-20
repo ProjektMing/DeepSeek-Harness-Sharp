@@ -1,7 +1,5 @@
-using System.Text.Json;
 using Dsh.Core;
 using Dsh.Llm;
-using Dsh.Subagent;
 
 namespace Dsh.Workflow;
 
@@ -113,7 +111,7 @@ public sealed class WorkflowRunHost : IWorkflowRun
         _result.TrySetResult(result);
     }
 
-    public sealed class SubagentChildPort(SubagentRuntime subagents, string provider, IAgent parent, CancellationTokenSource controller) : IChildPort
+    public sealed class SubagentChildPort(ISubagentService subagents, string provider, IAgent parent, CancellationTokenSource controller) : IChildPort
     {
         public async Task<IChildHandle> StartAsync(ChildStartRequest request)
         {

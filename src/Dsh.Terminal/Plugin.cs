@@ -1,7 +1,6 @@
 using Dsh.Runtime;
 using Dsh.Core;
 using Dsh.Plugins;
-using Dsh.Tools;
 
 [assembly: DshPlugin(Dsh.Terminal.Plugin.Terminal)]
 [assembly: DshPlugin(Dsh.Terminal.Plugin.TerminalBash)]

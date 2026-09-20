@@ -40,7 +40,9 @@ public static class MemoryCommand
                     case "show":
                         if (!IsEnabled(options))
                             return new CommandResult.Error("project memory is disabled; run /memory on first");
-                        return new CommandResult.Success(await ResolveMemory(ctx, options).ShowAsync(invocation.Signal));
+                        if (ResolveMemory(ctx) is not { } memoryToShow)
+                            return new CommandResult.Error("project memory is unavailable; the memory plugin is not loaded");
+                        return new CommandResult.Success(await memoryToShow.ShowAsync(invocation.Signal));
                     default:
                         return new CommandResult.Error("usage: /memory on | /memory off | /memory show");
                 }
@@ -79,7 +81,8 @@ public static class MemoryCommand
     {
         if (!IsEnabled(options))
             return "";
-        var memory = ResolveMemory(ctx, options);
+        if (ResolveMemory(ctx) is not { } memory)
+            return "";
         return $"""
             Project memory is enabled (store: {memory.Description}).
             Maintain it with the memory_save tool: remember (upsert a record), correct (record a correction), forget (remove by key), skip (out-of-scope content).
@@ -91,7 +94,8 @@ public static class MemoryCommand
     {
         if (!IsEnabled(options))
             return "";
-        var memory = ResolveMemory(ctx, options);
+        if (ResolveMemory(ctx) is not { } memory)
+            return "";
         try
         {
             return memory.BuildIndexAsync().GetAwaiter().GetResult();
@@ -102,19 +106,8 @@ public static class MemoryCommand
         }
     }
 
-    private static ProjectMemory ResolveMemory(Context ctx, HarnessOptions options)
-        => ctx.Get<ProjectMemory>(MemoryServices.ProjectMemory, false) ?? Fallback(options);
-
-    private static ProjectMemory Fallback(HarnessOptions options)
-    {
-        var cwd = options.Cwd ?? Environment.CurrentDirectory;
-        var root = ProjectRoot.Resolve(cwd);
-        var configured = HarnessSettings.Load(options.Home).Memory?.File;
-        var path = string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(root, ".dsh-memory.md")
-            : Path.GetFullPath(configured, cwd);
-        return new ProjectMemory(new FileMemoryStore(path), ProjectMemory.SidecarDirFor(root));
-    }
+    private static ProjectMemory? ResolveMemory(Context ctx)
+        => ctx.Get<ProjectMemory>(MemoryServices.ProjectMemory, false);
 
     private static bool IsEnabled(HarnessOptions options)
         => HarnessSettings.Load(options.Home).Memory?.Enabled == true;
